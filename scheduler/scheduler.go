@@ -26,5 +26,8 @@ type Scheduler interface {
 	ReportMachine()
 
 	Schedule()
+	ScheduleOnce()
+	Done() bool
+	Progress() string
 }
 

@@ -27,7 +27,7 @@ func main() {
 	flag.Usage = usage
 	flag.Parse()
 
-	if(debug) {
+	if debug {
 		log.SetLevel(log.DebugLevel)
 	}
 

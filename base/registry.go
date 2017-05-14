@@ -4,6 +4,8 @@ import (
 	"sync"
 	log "github.com/Sirupsen/logrus"
 	"container/heap"
+	"math"
+	"sort"
 )
 
 type Registry struct {
@@ -40,12 +42,34 @@ func (r *Registry) GetJob(id int64) *Job {
 	}
 }
 
+func (r *Registry) NextScheduleJob() *Job {
+	r.jobMutex.Lock()
+	defer r.jobMutex.Unlock()
+
+	if len(r.jobs) == 0 {
+		return nil
+	}
+
+	// TODO: sort more efficient
+	v := make([]*Job, 0, len(r.jobs))
+	for _, value := range r.jobs {
+		if value.taskQueue.Len() > 0 {
+			v = append(v, value)
+		}
+	}
+	if len(v) == 0 {
+		return nil
+	}
+	sort.Sort(JobShareSort(v))
+	return v[0]
+}
+
 func (r *Registry) GetFirstTaskOfJob(job *Job) *Task {
 	r.jobMutex.Lock()
 	defer r.jobMutex.Unlock()
 
-	if job, ok := r.jobs[job.JobID]; ok && len(job.taskQueue) > 0 {
-		return <-job.taskQueue
+	if job, ok := r.jobs[job.JobID]; ok && job.taskQueue.Len() > 0 {
+		return job.taskQueue.Peek()
 	}
 	return nil
 }
@@ -55,9 +79,25 @@ func (r *Registry) TaskLenOfJob(job *Job) int {
 	defer r.jobMutex.RUnlock()
 
 	if job, ok := r.jobs[job.JobID]; ok {
-		return len(job.taskQueue)
+		return job.taskQueue.Len()
 	}
 	return 0
+}
+
+func (r *Registry) RunTaskOfJob(job *Job) *Task {
+	r.jobMutex.Lock()
+	defer r.jobMutex.Unlock()
+
+	task := job.taskQueue.PopTask()
+
+	return task
+}
+
+func (r *Registry) JobLen() int {
+	r.jobMutex.RLock()
+	defer r.jobMutex.RUnlock()
+
+	return len(r.jobs)
 }
 
 func (r *Registry) AddJob(job *Job) {
@@ -65,6 +105,21 @@ func (r *Registry) AddJob(job *Job) {
 	defer r.jobMutex.Unlock()
 
 	r.jobs[job.JobID] = job
+}
+
+func (r *Registry) UpdateJob(job *Job, task *Task, totalCpu, totalMem float64, add bool) {
+	r.jobMutex.Lock()
+	defer r.jobMutex.Unlock()
+
+	if add {
+		job.CpuUsed += task.CpuRequest
+		job.MemUsed += task.MemoryRequest
+	} else {
+		job.CpuUsed -= task.CpuRequest
+		job.MemUsed -= task.MemoryRequest
+		job.TaskDone ++
+	}
+	job.Share = math.Max(job.CpuUsed/totalCpu, job.MemUsed/totalMem)
 }
 
 func (r *Registry) RemoveJob(job *Job) {
@@ -81,7 +136,7 @@ func (r *Registry) AddTask(task *Task) {
 	defer r.taskMutex.Unlock()
 
 	if job, ok := r.jobs[task.JobID]; ok {
-		job.taskQueue <- task
+		job.taskQueue.PushTask(task)
 		r.tasks[TaskID(task)] = task
 
 	}
@@ -96,6 +151,7 @@ func (r *Registry) UpdateTask(task *Task) {
 	} else {
 		log.Errorf("Task not found: job(%v) index(%v)", task.JobID, task.TaskIndex)
 	}
+
 }
 
 func (r *Registry) RemoveTask(task *Task) {

@@ -202,6 +202,7 @@ func (t *TraceLoader) LoadTasks() ([]*Event, error) {
 	}
 
 	for _, t := range tasks {
+
 		events = append(events, &Event{
 			Time: t.SubmitTime,
 			EventOrigin: EVENT_TASK,

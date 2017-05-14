@@ -4,7 +4,6 @@ import (
 	"strings"
 	"errors"
 	"strconv"
-	"math"
 )
 
 func stringToInt64(str string, defaults int64) int64 {
@@ -33,6 +32,10 @@ func stringToBool(str string, defaults bool) bool {
 	}
 }
 
+const (
+	TIME_DELAY = 100
+)
+
 type Machine struct {
 	MachineID  int64
 	PlatformID string
@@ -57,8 +60,8 @@ type Job struct {
 	index     int
 	CpuUsed   float64
 	MemUsed   float64
-	taskDone  int64
-	taskQueue chan *Task
+	TaskDone  int64
+	taskQueue *SyncTaskQueue
 }
 
 func NewJob(job Job) *Job {
@@ -69,26 +72,15 @@ func NewJob(job Job) *Job {
 		EndTime:    job.EndTime,
 		TaskNum:    job.TaskNum,
 		Duration:   job.Duration,
+		Share:      job.Share,
 
-		taskQueue: make(chan *Task, 64),
+		taskQueue: NewSyncTaskQueue(),
 	}
 
-}
-
-func (job *Job) UpdateStat(task *Task, totalCpu, totalMem float64, add bool) {
-	if add {
-		job.CpuUsed += task.CpuRequest
-		job.MemUsed += task.MemoryRequest
-	} else {
-		job.CpuUsed -= task.CpuRequest
-		job.MemUsed -= task.MemoryRequest
-		job.taskDone ++
-	}
-	job.Share = math.Max(job.CpuUsed/totalCpu, job.MemUsed/totalMem)
 }
 
 func (job *Job) Done() bool {
-	return job.taskDone == job.TaskNum
+	return job.TaskDone == job.TaskNum
 }
 
 type TaskStatus int

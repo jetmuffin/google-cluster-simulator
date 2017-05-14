@@ -1,6 +1,10 @@
 package base
 
-import "container/heap"
+import (
+	"container/heap"
+	"sync"
+	log "github.com/Sirupsen/logrus"
+)
 
 type JobHeap []*Job
 
@@ -16,6 +20,12 @@ func (h JobHeap) Len() int {
 }
 
 func (h JobHeap) Less(i, j int) bool {
+	if h[i].Share == h[j].Share {
+		if h[i].taskQueue.Len() == h[j].taskQueue.Len() {
+			return h[i].SubmitTime < h[j].SubmitTime
+		}
+		return h[i].taskQueue.Len() > h[j].taskQueue.Len()
+	}
 	return h[i].Share < h[j].Share
 }
 
@@ -41,33 +51,59 @@ func (h *JobHeap) Pop() interface{} {
 	return item
 }
 
-func (h *JobHeap) PushJob(job *Job) {
-	heap.Push(h, job)
+type JobSyncHeap struct {
+	heap *JobHeap
+	lock sync.RWMutex
 }
 
-func (h *JobHeap) PopJob() *Job {
-	return heap.Pop(h).(*Job)
+func NewJobSyncHeap() *JobSyncHeap {
+	h := NewJobHeap()
+	return &JobSyncHeap{
+		heap: &h,
+	}
 }
 
-func (h *JobHeap) TopJob() *Job {
-	if len(*h) == 0 {
+func (h *JobSyncHeap) PushJob(job *Job) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	heap.Push(h.heap, job)
+}
+
+func (h *JobSyncHeap) PopJob() *Job {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	return heap.Pop(h.heap).(*Job)
+}
+
+func (h *JobSyncHeap) TopJob() *Job {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+
+	if len(*h.heap) == 0 {
 		return nil
 	}
-	l := *h
+	l := *h.heap
 	return l[0]
 }
 
-func (h *JobHeap) TopIndexJob(index int) *Job {
-	if index >= len(*h) {
-		return nil
-	}
-	l := *h
-	return l[index]
+func (h *JobSyncHeap) UpdateJob(job *Job) {
+	h.lock.Lock()
+	defer h.lock.Unlock()
+
+	heap.Fix(h.heap, job.index)
 }
 
-func (h *JobHeap) UpdateShare(job *Job, share float64) {
-	job.Share = share
-	heap.Fix(h, job.index)
+func (h *JobSyncHeap) Debug() {
+	h.lock.RLock()
+	defer h.lock.RUnlock()
+
+	for _, v := range *h.heap {
+		log.Debugf("%v %v %v [%v]",v.JobID, v.Share, v.taskQueue.Len(), v.SubmitTime/1000/1000)
+	}
+
+	log.Debug()
 }
 
 type EventHeap []*Event
@@ -102,5 +138,3 @@ func (h *EventHeap) Pop() interface{} {
 	*h = old[0: n-1]
 	return item
 }
-
-
