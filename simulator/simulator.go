@@ -3,26 +3,29 @@ package simulator
 import (
 	. "github.com/JetMuffin/google-cluster-simulator/scheduler"
 	. "github.com/JetMuffin/google-cluster-simulator/base"
+	. "github.com/JetMuffin/google-cluster-simulator/monitor"
 	log "github.com/Sirupsen/logrus"
 )
 
 type Simulator struct {
 	loader    *TraceLoader
 	scheduler Scheduler
+	monitor   *Monitor
 	registry  *Registry
 
 	timeticker *int64
-	signal chan int
+	signal     chan int
 }
 
 func NewSimulator(directory string, schedulerType SchedulerType) (*Simulator, error) {
 	s := &Simulator{
 		loader:     NewLoader(directory),
 		timeticker: new(int64),
-		signal: make(chan int, 1),
+		signal:     make(chan int, 1),
 	}
 
 	events, err := s.loader.LoadMarshalEvents()
+	usage, err := s.loader.LoadUsage()
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +33,9 @@ func NewSimulator(directory string, schedulerType SchedulerType) (*Simulator, er
 	eventHeap := NewEventHeap(events)
 	s.registry = NewRegistry(&eventHeap)
 
-	s.scheduler = NewDRFScheduler(s.registry, s.timeticker, s.signal,0.5, 10, 589)
+	s.monitor = NewMonitor(usage, s.registry, NewMonitorParam(0.5, 0.3, 1.2, 1.2, 0.1), s.timeticker)
+	s.scheduler = NewDRFScheduler(s.registry, s.timeticker, s.signal, 1, 10, 589)
+	//s.scheduler = NewDRFOScheduler(s.monitor, s.registry, s.timeticker, s.signal, 1, 10, 589)
 
 	return s, nil
 }
@@ -70,6 +75,7 @@ func (s *Simulator) HandleTaskEvent(event *Event) {
 }
 
 func (s *Simulator) Run() {
+	s.monitor.Run()
 	for !s.scheduler.Done() {
 		if s.registry.LenEvent() > 0 {
 			event := s.registry.PopEvent()

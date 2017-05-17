@@ -22,3 +22,17 @@ func (s JobShareSort) Less(i, j int) bool {
 	}
 	return s[i].Share < s[j].Share
 }
+
+type UsageSort []TaskUsage
+
+func (u UsageSort) Len() int {
+	return len(u)
+}
+
+func (u UsageSort) Swap(i, j int) {
+	u[i], u[j] = u[j], u[i]
+}
+
+func (u UsageSort) Less(i, j int) bool {
+	return u[i].StartTime < u[j].StartTime
+}

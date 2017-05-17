@@ -175,6 +175,19 @@ func (r *Registry) ArchiveTask() map[TaskStatus][]*Task {
 	return archive
 }
 
+func (r *Registry) FilterTask(filterFunc func(*Task) bool) []*Task {
+	r.taskMutex.RLock()
+	defer r.taskMutex.RUnlock()
+
+	result := []*Task{}
+	for _, task := range r.tasks {
+		if filterFunc(task) {
+			result = append(result, task)
+		}
+	}
+	return result
+}
+
 func (r *Registry) AddMachine(machine *Machine) {
 	r.machineMutex.Lock()
 	defer r.machineMutex.Unlock()

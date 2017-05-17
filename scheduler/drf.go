@@ -47,12 +47,14 @@ func (d *DRFScheduler) SubmitTask(task *Task) {
 
 func (d *DRFScheduler) ScheduleTask(task *Task) {
 	task.Status = TASK_STATUS_RUNNING
+	task.StartTime = *d.timeticker
 	d.registry.UpdateTask(task)
 }
 
 func (d *DRFScheduler) CompleteTask(task *Task) {
 	//d.registry.RemoveTask(task)
 	task.Status = TASK_STATUS_FINISHED
+	task.EndTime = *d.timeticker
 	job := d.registry.GetJob(task.JobID)
 	if job != nil {
 		d.registry.UpdateJob(job, task, d.totalCpu, d.totalMem, false)

@@ -3,34 +3,7 @@ package base
 import (
 	"strings"
 	"errors"
-	"strconv"
 )
-
-func stringToInt64(str string, defaults int64) int64 {
-	i, err := strconv.ParseInt(str, 10, 64)
-	if err != nil {
-		return defaults
-	}
-	return i
-}
-
-func stringToFloat64(str string, defaults float64) float64 {
-	f, err := strconv.ParseFloat(str, 64)
-	if err != nil {
-		return defaults
-	}
-	return f
-}
-
-func stringToBool(str string, defaults bool) bool {
-	if str == "0" {
-		return false
-	} else if str == "1" {
-		return true
-	} else {
-		return defaults
-	}
-}
 
 const (
 	TIME_DELAY = 100
@@ -104,11 +77,14 @@ type Task struct {
 	DiskSpaceRequest             float64 `csv:"disk_space_request"`
 	DifferentMachinesRestriction bool
 	SubmitTime                   int64 `csv:"submit_time"`
-	StartTime                    int64 `csv:"start_time"`
-	EndTime                      int64 `csv:"end_time"`
+	StartTime                    int64
+	EndTime                      int64
 	Duration                     int64 `csv:"duration"`
 
-	Status TaskStatus
+	Status        TaskStatus
+	CpuSlack      float64
+	MemSlack      float64
+	Oversubscribe bool
 }
 
 func NewTask(task Task) *Task {
@@ -127,6 +103,10 @@ func NewTask(task Task) *Task {
 
 func TaskID(task *Task) int64 {
 	return task.JobID*1333 + task.TaskIndex
+}
+
+func GetTaskID(jobId, taskIndex int64) int64 {
+	return jobId*1333 + taskIndex
 }
 
 type MachineEventType int
@@ -253,4 +233,38 @@ func ParseJobEvent(line string) (*Event, error) {
 		Job:           job,
 		EventOrigin:   EVENT_JOB,
 	}, nil
+}
+
+type TaskUsage struct {
+	StartTime                  int64 `csv:"start_time"`
+	EndTime                    int64 `csv:"end_time"`
+	JobID                      int64 `csv:"job_id"`
+	TaskIndex                  int64 `csv:"task_index"`
+	MachineID                  int64 `csv:"machine_id"`
+	CpuUsage                   float64 `csv:"cpu_rate"`
+	MemoryUsage                float64 `csv:"canonical_memory_usage"`
+	AssignedMemoryUsage        float64 `csv:"assigned_memory_usage"`
+	UnmappedPageCache          float64 `csv:"unmapped_page_cache"`
+	TotalPageCache             float64 `csv:"total_page_cache"`
+	MaxMemoryUsage             float64 `csv:"maximum_memory_usage"`
+	DiskIOTime                 float64 `csv:"disk_io_time"`
+	LocalDiskSpaceUsage        float64 `csv:"local_disk_space_usage"`
+	MaxCpuRate                 float64 `csv:"maximum_cpu_rate"`
+	MaxDiskIOTime              float64 `csv:"maximum_disk_io_time"`
+	CyclePerInstruction        float64 `csv:"cycles_per_instruction"`
+	MemoryAccessPerInstruction float64 `csv:"memory_access_per_instruction"`
+	SamplePortion              float64 `csv:"sample_portion"`
+	AggregationType            bool `csv:"aggregation_type"`
+	SampleCpuUsage             float64 `csv:"sampled_cpu_usage"`
+}
+
+func NewTaskUsage(t TaskUsage) *TaskUsage {
+	return &TaskUsage{
+		StartTime:   t.StartTime,
+		EndTime:     t.EndTime,
+		JobID:       t.JobID,
+		TaskIndex:   t.TaskIndex,
+		CpuUsage:    t.CpuUsage,
+		MemoryUsage: t.MemoryUsage,
+	}
 }

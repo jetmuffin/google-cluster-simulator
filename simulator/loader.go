@@ -9,6 +9,7 @@ import (
 	"bufio"
 	"io"
 	"io/ioutil"
+	"sort"
 )
 
 const (
@@ -18,6 +19,7 @@ const (
 
 	SAMPLE_TASK_PATH = "sample/tasks.csv"
 	SAMPLE_JOB_PATH = "sample/jobs.csv"
+	SAMPLE_USAGE_PATH = "sample/usage.csv"
 )
 
 type TraceLoader struct {
@@ -212,4 +214,32 @@ func (t *TraceLoader) LoadTasks() ([]*Event, error) {
 	}
 
 	return events, nil
+}
+
+func (t *TraceLoader) LoadUsage() (map[int64] []*TaskUsage, error) {
+	f, err := os.Open(path.Join(t.directory, SAMPLE_USAGE_PATH))
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	m := make(map[int64] []*TaskUsage)
+	usages := []TaskUsage{}
+
+	c, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, err
+	}
+
+	err = marshal.Unmarshal([]byte(c), &usages)
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Sort(UsageSort(usages))
+	for _, taskUsage := range usages {
+		m[GetTaskID(taskUsage.JobID, taskUsage.TaskIndex)] = append(m[GetTaskID(taskUsage.JobID, taskUsage.TaskIndex)], NewTaskUsage(taskUsage))
+	}
+
+	return m, nil
 }
