@@ -20,9 +20,9 @@ type Simulator struct {
 	signal     chan int
 }
 
-func NewSimulator(directory string, schedulerType SchedulerType, cpu, mem float64) (*Simulator, error) {
+func NewSimulator(config Config) (*Simulator, error) {
 	s := &Simulator{
-		loader:     NewLoader(directory),
+		loader:     NewLoader(config.Directory),
 		timeticker: new(int64),
 		signal:     make(chan int, 1),
 	}
@@ -36,15 +36,15 @@ func NewSimulator(directory string, schedulerType SchedulerType, cpu, mem float6
 	eventHeap := NewEventHeap(events)
 	s.registry = NewRegistry(&eventHeap)
 
-	s.monitor = NewMonitor(usage, s.registry, NewMonitorParam(0.5, 0.3, 1.2, 1.2, 0.1), s.timeticker)
+	s.monitor = NewMonitor(usage, s.registry, NewMonitorParam(config.Alpha, config.Beta, config.Theta, config.Lambda, config.Gamma), s.timeticker)
 	s.jobNum = jobNum
 
-	switch schedulerType {
+	switch SchedulerType(config.Scheduler) {
 	case SCHEDULER_DRF:
-		s.scheduler = NewDRFScheduler(s.registry, s.timeticker, s.signal, jobNum, cpu, mem)
+		s.scheduler = NewDRFScheduler(s.registry, s.timeticker, s.signal, jobNum, config.Cpu, config.Mem)
 		break
 	case SCHEDULER_DATOM:
-		s.scheduler = NewDRFOScheduler(s.monitor, s.registry, s.timeticker, s.signal, jobNum, 0.5, 10)
+		s.scheduler = NewDRFOScheduler(s.monitor, s.registry, s.timeticker, s.signal, jobNum, config.Cpu, config.Mem)
 		break
 	default:
 		return nil, errors.New("Unknown scheduler type")
@@ -90,8 +90,9 @@ func (s *Simulator) HandleTaskEvent(event *Event) {
 func (s *Simulator) statistic() {
 	averageWaitingTime := float64(s.registry.TotalWaitingTime) / 1000.0 / 1000.0 / float64(s.jobNum)
 	averageRunningTime := float64(s.registry.TotalRunningTime) / 1000.0 / 1000.0 / float64(s.jobNum)
+	allDoneTime := *s.timeticker / 1000 / 1000
 
-	log.Infof("Average running time: %v, average waiting time: %v", averageRunningTime, averageWaitingTime)
+	log.Infof("Average running time: %v, average waiting time: %v, all job finished time: %v", averageRunningTime, averageWaitingTime, allDoneTime)
 }
 
 func (s *Simulator) Run() {

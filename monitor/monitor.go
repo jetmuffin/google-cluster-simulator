@@ -89,7 +89,7 @@ func (m *Monitor) Run() {
 func (m *Monitor) SlackResource(task *Task) bool {
 	windowNum := ( *m.timeticker - task.StartTime) / m.interval
 	taskId := TaskID(task)
-	if windowNum == 0 || len(m.cpuSlack[taskId]) == 0 || len(m.memSlack[taskId]) == 0 {
+	if windowNum == 0 || len(m.cpuSlack[taskId]) == 0 || len(m.memSlack[taskId]) == 0 || int(windowNum) > len(m.cpuSlack[taskId]) || int(windowNum) > len(m.memSlack[taskId]){
 		return false
 	}
 

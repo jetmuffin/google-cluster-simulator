@@ -6,8 +6,6 @@ import (
 	"github.com/JetMuffin/google-cluster-simulator/marshal"
 	log "github.com/Sirupsen/logrus"
 	"path"
-	"bufio"
-	"io"
 	"io/ioutil"
 	"sort"
 )

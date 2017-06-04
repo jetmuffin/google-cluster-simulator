@@ -5,16 +5,12 @@ import (
 	"fmt"
 	"flag"
 	log "github.com/Sirupsen/logrus"
-	. "github.com/JetMuffin/google-cluster-simulator/scheduler"
+	. "github.com/JetMuffin/google-cluster-simulator/base"
 	"github.com/JetMuffin/google-cluster-simulator/simulator"
 )
 
 var (
-	debug bool
-	directory string
-	cpu float64
-	mem float64
-	scheduler int
+	config Config
 )
 
 func usage() {
@@ -24,20 +20,25 @@ func usage() {
 }
 
 func main() {
-	flag.BoolVar(&debug, "debug", false, "Show debug logs")
-	flag.StringVar(&directory, "directory", "trace", "Directory of trace data")
-	flag.Float64Var(&cpu, "cpu", 10.0, "Total cpu allowed to use")
-	flag.Float64Var(&mem, "mem", 1024, "Total mem allowed to use")
-	flag.IntVar(&scheduler, "scheduler", 0, "Scheduler type")
+	flag.BoolVar(&config.Debug, "debug", false, "Show debug logs")
+	flag.StringVar(&config.Directory, "directory", "trace", "Directory of trace data")
+	flag.Float64Var(&config.Cpu, "cpu", 10.0, "Total cpu allowed to use")
+	flag.Float64Var(&config.Mem, "mem", 1024, "Total mem allowed to use")
+	flag.IntVar(&config.Scheduler, "scheduler", 0, "Scheduler type")
+	flag.Float64Var(&config.Alpha, "alpha", 0.5, "single exponential influence")
+	flag.Float64Var(&config.Beta, "beta", 0.3, "double exponential influence")
+	flag.Float64Var(&config.Theta, "theta", 1.2, "punish parameter")
+	flag.Float64Var(&config.Lambda, "lambda", 1.2, "threshold parameter")
+	flag.Float64Var(&config.Gamma, "gamma", 0.1, "predictor error feedback")
 
 	flag.Usage = usage
 	flag.Parse()
 
-	if debug {
+	if config.Debug {
 		log.SetLevel(log.DebugLevel)
 	}
 
-	s, err := simulator.NewSimulator(directory, SchedulerType(scheduler), cpu, mem)
+	s, err := simulator.NewSimulator(config)
 	if err != nil {
 		log.Errorf("Cannot create simulator: %v", err)
 	}
