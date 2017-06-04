@@ -13,13 +13,9 @@ import (
 )
 
 const (
-	MACHINE_EVENT_PATH = "machine_events/part-00000-of-00001.csv"
-	JOB_EVENT_PATH     = "job_events/part-00000-of-00500.csv"
-	TASK_EVENT_PATH    = "task_events/part-00000-of-00500.csv"
-
-	SAMPLE_TASK_PATH = "out/tasks.csv"
-	SAMPLE_JOB_PATH = "out/jobs.csv"
-	SAMPLE_USAGE_PATH = "out/task_usage.csv"
+	SAMPLE_TASK_PATH = "tasks.csv"
+	SAMPLE_JOB_PATH = "jobs.csv"
+	SAMPLE_USAGE_PATH = "task_usage.csv"
 )
 
 type TraceLoader struct {
@@ -30,108 +26,6 @@ func NewLoader(directory string) *TraceLoader {
 	return &TraceLoader{
 		directory: directory,
 	}
-}
-
-func (t *TraceLoader) LoadEvents() ([]*Event, int, error) {
-	var events []*Event
-
-	machineEvents, err := t.LoadMachineEvents()
-	if err == nil {
-		events = append(events, machineEvents...)
-	} else {
-		log.Error(err)
-		return nil, 0, err
-	}
-
-	jobEvents, err := t.LoadJobEvents()
-	jobNum := len(jobEvents)
-	if err == nil {
-		events = append(events, jobEvents...)
-	} else {
-		return nil, 0, err
-	}
-
-	taskEvents, err := t.LoadTaskEvents()
-	if err == nil {
-		events = append(events, taskEvents...)
-	} else {
-		return nil, 0, err
-	}
-
-	return events, jobNum, nil
-}
-
-func (t *TraceLoader) LoadMachineEvents() ([]*Event, error) {
-	f, err := os.Open(path.Join(t.directory, MACHINE_EVENT_PATH))
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	var events []*Event
-	rd := bufio.NewReader(f)
-
-	for {
-		line, err := rd.ReadString('\n')
-		if err != nil || io.EOF == err {
-			break
-		}
-
-		event, err := ParseMachineEvent(line)
-		if err != nil {
-			continue
-		}
-		events = append(events, event)
-	}
-	return events, nil
-}
-
-func (t *TraceLoader) LoadJobEvents() ([]*Event, error) {
-	f, err := os.Open(path.Join(t.directory, JOB_EVENT_PATH))
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	var events []*Event
-	rd := bufio.NewReader(f)
-	for {
-		line, err := rd.ReadString('\n')
-		if err != nil || io.EOF == err {
-			break
-		}
-
-		event, err := ParseJobEvent(line)
-		if err != nil || event.Time == 0 {
-			continue
-		}
-		events = append(events, event)
-	}
-	return events, nil
-}
-
-func (t *TraceLoader) LoadTaskEvents() ([]*Event, error) {
-	f, err := os.Open(path.Join(t.directory, TASK_EVENT_PATH))
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	var events []*Event
-	rd := bufio.NewReader(f)
-	for {
-		line, err := rd.ReadString('\n')
-		if err != nil || io.EOF == err {
-			break
-		}
-
-		event, err := ParseTaskEvent(line)
-		if err != nil || event.Time == 0{
-			continue
-		}
-		events = append(events, event)
-	}
-	return events, nil
 }
 
 func (t *TraceLoader) LoadMarshalEvents() ([]*Event, int, error) {
