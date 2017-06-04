@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	TIME_DELAY = 100
+	TIME_DELAY = 0
 )
 
 type Machine struct {
@@ -25,8 +25,8 @@ type Job struct {
 	LogicalJobName  string
 	TaskNum         int64        `csv:"task_num"`
 	SubmitTime      int64        `csv:"submit_time"`
-	StartTime       int64        `csv:"start_time"`
-	EndTime         int64        `csv:"end_time"`
+	StartTime       int64
+	EndTime         int64
 	Duration        int64        `csv:"duration"`
 
 	Share     float64
@@ -74,7 +74,7 @@ type Task struct {
 	Priority                     int64
 	CpuRequest                   float64 `csv:"cpu_request"`
 	MemoryRequest                float64 `csv:"memory_request"`
-	DiskSpaceRequest             float64 `csv:"disk_space_request"`
+	DiskSpaceRequest             float64
 	DifferentMachinesRestriction bool
 	SubmitTime                   int64 `csv:"submit_time"`
 	StartTime                    int64
@@ -240,22 +240,22 @@ type TaskUsage struct {
 	EndTime                    int64 `csv:"end_time"`
 	JobID                      int64 `csv:"job_id"`
 	TaskIndex                  int64 `csv:"task_index"`
-	MachineID                  int64 `csv:"machine_id"`
+	//MachineID                  int64 `csv:"machine_id"`
 	CpuUsage                   float64 `csv:"cpu_rate"`
 	MemoryUsage                float64 `csv:"canonical_memory_usage"`
-	AssignedMemoryUsage        float64 `csv:"assigned_memory_usage"`
-	UnmappedPageCache          float64 `csv:"unmapped_page_cache"`
-	TotalPageCache             float64 `csv:"total_page_cache"`
-	MaxMemoryUsage             float64 `csv:"maximum_memory_usage"`
-	DiskIOTime                 float64 `csv:"disk_io_time"`
-	LocalDiskSpaceUsage        float64 `csv:"local_disk_space_usage"`
-	MaxCpuRate                 float64 `csv:"maximum_cpu_rate"`
-	MaxDiskIOTime              float64 `csv:"maximum_disk_io_time"`
-	CyclePerInstruction        float64 `csv:"cycles_per_instruction"`
-	MemoryAccessPerInstruction float64 `csv:"memory_access_per_instruction"`
-	SamplePortion              float64 `csv:"sample_portion"`
-	AggregationType            bool `csv:"aggregation_type"`
-	SampleCpuUsage             float64 `csv:"sampled_cpu_usage"`
+	//AssignedMemoryUsage        float64 `csv:"assigned_memory_usage"`
+	//UnmappedPageCache          float64 `csv:"unmapped_page_cache"`
+	//TotalPageCache             float64 `csv:"total_page_cache"`
+	//MaxMemoryUsage             float64 `csv:"maximum_memory_usage"`
+	//DiskIOTime                 float64 `csv:"disk_io_time"`
+	//LocalDiskSpaceUsage        float64 `csv:"local_disk_space_usage"`
+	//MaxCpuRate                 float64 `csv:"maximum_cpu_rate"`
+	//MaxDiskIOTime              float64 `csv:"maximum_disk_io_time"`
+	//CyclePerInstruction        float64 `csv:"cycles_per_instruction"`
+	//MemoryAccessPerInstruction float64 `csv:"memory_access_per_instruction"`
+	//SamplePortion              float64 `csv:"sample_portion"`
+	//AggregationType            bool `csv:"aggregation_type"`
+	//SampleCpuUsage             float64 `csv:"sampled_cpu_usage"`
 }
 
 func NewTaskUsage(t TaskUsage) *TaskUsage {

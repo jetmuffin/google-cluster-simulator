@@ -17,8 +17,8 @@ type Monitor struct {
 	params   MonitorParam
 
 	timeticker *int64
-	interval int64
-	registry *Registry
+	interval   int64
+	registry   *Registry
 }
 
 type Slack struct {
@@ -52,12 +52,12 @@ func NewMonitorParam(alpha, beta, theta, lambda, gamma float64) MonitorParam {
 
 func NewMonitor(usages map[int64][]*TaskUsage, registry *Registry, params MonitorParam, timeticker *int64) *Monitor {
 	monitor := &Monitor{
-		Usages:   usages,
-		cpuSlack: make(map[int64][]float64),
-		memSlack: make(map[int64][]float64),
-		interval: MONITOR_INTERVAL,
-		timeticker:timeticker,
-		registry: registry,
+		Usages:     usages,
+		cpuSlack:   make(map[int64][]float64),
+		memSlack:   make(map[int64][]float64),
+		interval:   MONITOR_INTERVAL,
+		timeticker: timeticker,
+		registry:   registry,
 	}
 
 	for taskId, taskUsages := range usages {
@@ -77,7 +77,7 @@ func (m *Monitor) Run() {
 	go func() {
 		for {
 			// TODO: do not record all the time
-			for _, task := range m.registry.FilterTask(func(task *Task) bool {return task.Status == TASK_STATUS_RUNNING}) {
+			for _, task := range m.registry.FilterTask(func(task *Task) bool { return task.Status == TASK_STATUS_RUNNING }) {
 				if m.SlackResource(task) {
 					log.Debugf("Slack resource for task(%v) job(%v): cpu(%v/%v) mem(%v/%v)", task.TaskIndex, task.JobID, task.CpuSlack, task.CpuRequest, task.MemSlack, task.MemoryRequest)
 				}
@@ -89,13 +89,14 @@ func (m *Monitor) Run() {
 func (m *Monitor) SlackResource(task *Task) bool {
 	windowNum := ( *m.timeticker - task.StartTime) / m.interval
 	taskId := TaskID(task)
-	if windowNum == 0 {
+	if windowNum == 0 || len(m.cpuSlack[taskId]) == 0 || len(m.memSlack[taskId]) == 0 {
 		return false
 	}
 
-	task.CpuSlack = task.CpuRequest - m.cpuSlack[taskId][windowNum - 1]
-	task.MemSlack = task.MemoryRequest - m.memSlack[taskId][windowNum - 1]
+	task.CpuSlack = task.CpuRequest - m.cpuSlack[taskId][windowNum-1]
+	task.MemSlack = task.MemoryRequest - m.memSlack[taskId][windowNum-1]
 	m.registry.UpdateTask(task)
+
 	return true
 }
 

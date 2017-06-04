@@ -13,7 +13,7 @@ type DRFOScheduler struct {
 	Scheduler
 }
 
-func NewDRFOScheduler(monitor *Monitor, registry *Registry, timeticker *int64, signal chan int, cpu float64, mem float64, jobNum int) *DRFOScheduler {
+func NewDRFOScheduler(monitor *Monitor, registry *Registry, timeticker *int64, signal chan int, jobNum int, cpu float64, mem float64) *DRFOScheduler {
 	return &DRFOScheduler{
 		monitor: monitor,
 		drf: DRFScheduler{
@@ -83,16 +83,16 @@ func (d *DRFOScheduler) ScheduleOnce() {
 
 				log.Debugf("[%v] %v tasks of Job %v run, resource available(%v %v)", *d.drf.timeticker/1000/1000, task.TaskIndex, job.JobID, d.drf.totalCpu, d.drf.totalMem)
 			} else {
-				log.Warnf("No enough resource for task(%v) job(%v), request(%v %v), available(%v %v)", task.TaskIndex, task.JobID, task.CpuRequest, task.MemoryRequest, d.drf.totalCpu, d.drf.totalMem)
+				log.Debugf("No enough resource for task(%v) job(%v), request(%v %v), available(%v %v)", task.TaskIndex, task.JobID, task.CpuRequest, task.MemoryRequest, d.drf.totalCpu, d.drf.totalMem)
 				oversubscribeCandidates := d.drf.registry.FilterTask(func(task *Task) bool {
 					return task.Status == TASK_STATUS_RUNNING && task.Duration > 600000000 && task.CpuSlack > 0 && task.MemSlack > 0
 				})
 
-				log.Infof("Found %d candidates for oversubscription", len(oversubscribeCandidates))
+				log.Debugf("Found %d candidates for oversubscription", len(oversubscribeCandidates))
 				for _, oversubscribeTask := range oversubscribeCandidates {
 					if oversubscribeTask.CpuSlack > task.CpuRequest && oversubscribeTask.MemSlack > task.MemoryRequest {
 						d.runOversubscribeTask(job, task, oversubscribeTask)
-						log.Infof("Oversubscribe on task(%v)-job(%v) for task(%v)-job(%v)", oversubscribeTask.TaskIndex, oversubscribeTask.JobID, task.TaskIndex, task.JobID)
+						log.Debugf("Oversubscribe on task(%v)-job(%v) for task(%v)-job(%v)", oversubscribeTask.TaskIndex, oversubscribeTask.JobID, task.TaskIndex, task.JobID)
 						break
 					}
 				}

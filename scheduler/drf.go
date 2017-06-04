@@ -20,7 +20,7 @@ type DRFScheduler struct {
 	Scheduler
 }
 
-func NewDRFScheduler(registry *Registry, timeticker *int64, signal chan int, cpu float64, mem float64, jobNum int) *DRFScheduler {
+func NewDRFScheduler(registry *Registry, timeticker *int64, signal chan int, jobNum int, cpu float64, mem float64) *DRFScheduler {
 	return &DRFScheduler{
 		totalCpu:   cpu,
 		totalMem:   mem,
@@ -36,7 +36,7 @@ func (d *DRFScheduler) SubmitJob(job *Job) {
 }
 
 func (d *DRFScheduler) CompleteJob(job *Job) {
-	d.registry.RemoveJob(job)
+	d.registry.RemoveJob(job, *d.timeticker)
 	d.jobDone++
 }
 
@@ -88,7 +88,7 @@ func (d *DRFScheduler) runTask(job *Job, task *Task) {
 	log.Debugf("[%v] Task(%v) of job(%v) will finished at %v", *d.timeticker/1000/1000, task.TaskIndex, task.JobID, *d.timeticker+task.Duration)
 
 	d.registry.UpdateJob(job, task, d.totalCpu, d.totalMem, true)
-	d.registry.RunTaskOfJob(job)
+	d.registry.RunTaskOfJob(job, *d.timeticker)
 
 	d.totalCpu -= task.CpuRequest
 	d.totalMem -= task.MemoryRequest
@@ -121,7 +121,7 @@ func (d *DRFScheduler) ScheduleOnce() {
 
 				log.Debugf("[%v] %v tasks of Job %v run, resource available(%v %v)", *d.timeticker/1000/1000, task.TaskIndex, job.JobID, d.totalCpu, d.totalMem)
 			} else {
-				log.Warnf("No enough resource for task(%v) job(%v), request(%v %v), available(%v %v)", task.TaskIndex, task.JobID, task.CpuRequest, task.MemoryRequest, d.totalCpu, d.totalMem)
+				log.Debugf("No enough resource for task(%v) job(%v), request(%v %v), available(%v %v)", task.TaskIndex, task.JobID, task.CpuRequest, task.MemoryRequest, d.totalCpu, d.totalMem)
 			}
 		}
 	}

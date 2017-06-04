@@ -17,9 +17,9 @@ const (
 	JOB_EVENT_PATH     = "job_events/part-00000-of-00500.csv"
 	TASK_EVENT_PATH    = "task_events/part-00000-of-00500.csv"
 
-	SAMPLE_TASK_PATH = "sample/tasks.csv"
-	SAMPLE_JOB_PATH = "sample/jobs.csv"
-	SAMPLE_USAGE_PATH = "sample/usage.csv"
+	SAMPLE_TASK_PATH = "out/tasks.csv"
+	SAMPLE_JOB_PATH = "out/jobs.csv"
+	SAMPLE_USAGE_PATH = "out/task_usage.csv"
 )
 
 type TraceLoader struct {
@@ -32,7 +32,7 @@ func NewLoader(directory string) *TraceLoader {
 	}
 }
 
-func (t *TraceLoader) LoadEvents() ([]*Event, error) {
+func (t *TraceLoader) LoadEvents() ([]*Event, int, error) {
 	var events []*Event
 
 	machineEvents, err := t.LoadMachineEvents()
@@ -40,24 +40,25 @@ func (t *TraceLoader) LoadEvents() ([]*Event, error) {
 		events = append(events, machineEvents...)
 	} else {
 		log.Error(err)
-		return nil, err
+		return nil, 0, err
 	}
 
 	jobEvents, err := t.LoadJobEvents()
+	jobNum := len(jobEvents)
 	if err == nil {
 		events = append(events, jobEvents...)
 	} else {
-		return nil, err
+		return nil, 0, err
 	}
 
 	taskEvents, err := t.LoadTaskEvents()
 	if err == nil {
 		events = append(events, taskEvents...)
 	} else {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return events, nil
+	return events, jobNum, nil
 }
 
 func (t *TraceLoader) LoadMachineEvents() ([]*Event, error) {
@@ -133,22 +134,24 @@ func (t *TraceLoader) LoadTaskEvents() ([]*Event, error) {
 	return events, nil
 }
 
-func (t *TraceLoader) LoadMarshalEvents() ([]*Event, error) {
+func (t *TraceLoader) LoadMarshalEvents() ([]*Event, int, error) {
 	var events []*Event
+	var jobNum int
 
 	if jobEvents, err := t.LoadJobs(); err == nil {
 		events = append(events, jobEvents...)
+		jobNum = len(jobEvents)
 	} else {
-		return nil, err
+		return nil, 0, err
 	}
 
 	if taskEvents, err := t.LoadTasks(); err == nil {
 		events = append(events, taskEvents...)
 	} else {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return events, nil
+	return events, jobNum, nil
 }
 
 func (t *TraceLoader) LoadJobs() ([]*Event, error) {
@@ -172,6 +175,7 @@ func (t *TraceLoader) LoadJobs() ([]*Event, error) {
 	}
 
 	for _, j := range jobs {
+		log.Debugf("%+v", j)
 		events = append(events, &Event{
 			Time: j.SubmitTime,
 			EventOrigin: EVENT_JOB,
@@ -179,7 +183,6 @@ func (t *TraceLoader) LoadJobs() ([]*Event, error) {
 			Job: NewJob(j),
 		})
 	}
-
 	return events, nil
 }
 
@@ -204,7 +207,7 @@ func (t *TraceLoader) LoadTasks() ([]*Event, error) {
 	}
 
 	for _, t := range tasks {
-
+		log.Debugf("%+v", t)
 		events = append(events, &Event{
 			Time: t.SubmitTime,
 			EventOrigin: EVENT_TASK,

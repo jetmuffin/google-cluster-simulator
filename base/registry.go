@@ -12,8 +12,10 @@ type Registry struct {
 	machines     map[int64]*Machine
 	machineMutex sync.RWMutex
 
-	jobs     map[int64]*Job
-	jobMutex sync.RWMutex
+	jobs             map[int64]*Job
+	jobMutex         sync.RWMutex
+	TotalWaitingTime int64 // start_time - submit_time
+	TotalRunningTime int64 // end_time - submit_time
 
 	tasks     map[int64]*Task
 	taskMutex sync.RWMutex
@@ -28,6 +30,9 @@ func NewRegistry(events *EventHeap) *Registry {
 		jobs:     make(map[int64]*Job),
 		tasks:    make(map[int64]*Task),
 		events:   events,
+
+		TotalRunningTime: 0,
+		TotalWaitingTime: 0,
 	}
 }
 
@@ -84,10 +89,13 @@ func (r *Registry) TaskLenOfJob(job *Job) int {
 	return 0
 }
 
-func (r *Registry) RunTaskOfJob(job *Job) *Task {
+func (r *Registry) RunTaskOfJob(job *Job, time int64) *Task {
 	r.jobMutex.Lock()
 	defer r.jobMutex.Unlock()
 
+	if job.StartTime == 0 {
+		job.StartTime = time
+	}
 	task := job.taskQueue.PopTask()
 
 	return task
@@ -122,11 +130,16 @@ func (r *Registry) UpdateJob(job *Job, task *Task, totalCpu, totalMem float64, a
 	job.Share = math.Max(job.CpuUsed/totalCpu, job.MemUsed/totalMem)
 }
 
-func (r *Registry) RemoveJob(job *Job) {
+func (r *Registry) RemoveJob(job *Job, time int64) {
 	r.jobMutex.Lock()
 	defer r.jobMutex.Unlock()
 
 	if _, ok := r.jobs[job.JobID]; ok {
+		job.EndTime = time
+
+		r.TotalWaitingTime += job.StartTime - job.SubmitTime
+		r.TotalRunningTime += job.EndTime - job.SubmitTime
+
 		delete(r.jobs, job.JobID)
 	}
 }
