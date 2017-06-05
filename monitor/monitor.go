@@ -73,23 +73,27 @@ func NewMonitor(usages map[int64][]*TaskUsage, registry *Registry, params Monito
 	return monitor
 }
 
-func (m *Monitor) Run() {
+func (m *Monitor) RunForever() {
 	go func() {
 		for {
-			// TODO: do not record all the time
-			for _, task := range m.registry.FilterTask(func(task *Task) bool { return task.Status == TASK_STATUS_RUNNING }) {
-				if m.SlackResource(task) {
-					log.Debugf("Slack resource for task(%v) job(%v): cpu(%v/%v) mem(%v/%v)", task.TaskIndex, task.JobID, task.CpuSlack, task.CpuRequest, task.MemSlack, task.MemoryRequest)
-				}
-			}
+			m.RunOnce()
 		}
-	}()
+	} ()
+}
+
+func (m *Monitor) RunOnce() {
+	// TODO: do not record all the time
+	for _, task := range m.registry.FilterTask(func(task *Task) bool { return task.Status == TASK_STATUS_RUNNING }) {
+		if m.SlackResource(task) {
+			log.Debugf("Slack resource for task(%v) job(%v): cpu(%v/%v) mem(%v/%v)", task.TaskIndex, task.JobID, task.CpuSlack, task.CpuRequest, task.MemSlack, task.MemoryRequest)
+		}
+	}
 }
 
 func (m *Monitor) SlackResource(task *Task) bool {
 	windowNum := ( *m.timeticker - task.StartTime) / m.interval
 	taskId := TaskID(task)
-	if windowNum == 0 || len(m.cpuSlack[taskId]) == 0 || len(m.memSlack[taskId]) == 0 || int(windowNum) > len(m.cpuSlack[taskId]) || int(windowNum) > len(m.memSlack[taskId]){
+	if windowNum == 0 || len(m.cpuSlack[taskId]) == 0 || len(m.memSlack[taskId]) == 0 || int(windowNum) > len(m.cpuSlack[taskId]) || int(windowNum) > len(m.memSlack[taskId]) {
 		return false
 	}
 
