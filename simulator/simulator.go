@@ -96,7 +96,6 @@ func (s *Simulator) statistic() {
 }
 
 func (s *Simulator) Run() {
-	s.monitor.Run()
 	for !s.scheduler.Done() {
 		if s.registry.LenEvent() > 0 {
 			event := s.registry.PopEvent()

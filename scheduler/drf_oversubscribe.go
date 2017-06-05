@@ -84,6 +84,7 @@ func (d *DRFOScheduler) ScheduleOnce() {
 				log.Debugf("[%v] %v tasks of Job %v run, resource available(%v %v)", *d.drf.timeticker/1000/1000, task.TaskIndex, job.JobID, d.drf.totalCpu, d.drf.totalMem)
 			} else {
 				log.Debugf("No enough resource for task(%v) job(%v), request(%v %v), available(%v %v)", task.TaskIndex, task.JobID, task.CpuRequest, task.MemoryRequest, d.drf.totalCpu, d.drf.totalMem)
+				d.monitor.RunOnce()
 				oversubscribeCandidates := d.drf.registry.FilterTask(func(task *Task) bool {
 					return task.Status == TASK_STATUS_RUNNING && task.Duration > 600000000 && task.CpuSlack > 0 && task.MemSlack > 0
 				})
