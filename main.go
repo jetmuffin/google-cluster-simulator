@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"flag"
 	log "github.com/Sirupsen/logrus"
-	. "github.com/JetMuffin/google-cluster-simulator/base"
+	. "github.com/JetMuffin/google-cluster-simulator/common"
 	"github.com/JetMuffin/google-cluster-simulator/simulator"
 )
 
@@ -33,6 +33,9 @@ func main() {
 
 	flag.Usage = usage
 	flag.Parse()
+
+	//f, err := os.OpenFile("out.log", os.O_WRONLY | os.O_CREATE, 0755)
+	//log.SetOutput(f)
 
 	if config.Debug {
 		log.SetLevel(log.DebugLevel)

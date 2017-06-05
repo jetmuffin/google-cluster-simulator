@@ -1,4 +1,4 @@
-package base
+package common
 
 import (
 	"strings"
@@ -29,12 +29,14 @@ type Job struct {
 	EndTime         int64
 	Duration        int64        `csv:"duration"`
 
-	Share     float64
-	index     int
-	CpuUsed   float64
-	MemUsed   float64
-	TaskDone  int64
-	taskQueue *SyncTaskQueue
+	Share      float64
+	index      int
+	deleted    bool
+	CpuUsed    float64
+	MemUsed    float64
+	TaskDone   int64
+	TaskSubmit int64
+	taskQueue  *SyncTaskQueue
 }
 
 func NewJob(job Job) *Job {
@@ -55,6 +57,7 @@ func NewJob(job Job) *Job {
 func (job *Job) Done() bool {
 	return job.TaskDone == job.TaskNum
 }
+
 
 type TaskStatus int
 
@@ -140,6 +143,7 @@ const (
 )
 
 type Event struct {
+	Id               string
 	Time             int64
 	Machine          *Machine
 	Job              *Job
@@ -236,13 +240,13 @@ func ParseJobEvent(line string) (*Event, error) {
 }
 
 type TaskUsage struct {
-	StartTime                  int64 `csv:"start_time"`
-	EndTime                    int64 `csv:"end_time"`
-	JobID                      int64 `csv:"job_id"`
-	TaskIndex                  int64 `csv:"task_index"`
+	StartTime int64 `csv:"start_time"`
+	EndTime   int64 `csv:"end_time"`
+	JobID     int64 `csv:"job_id"`
+	TaskIndex int64 `csv:"task_index"`
 	//MachineID                  int64 `csv:"machine_id"`
-	CpuUsage                   float64 `csv:"cpu_rate"`
-	MemoryUsage                float64 `csv:"canonical_memory_usage"`
+	CpuUsage    float64 `csv:"cpu_rate"`
+	MemoryUsage float64 `csv:"canonical_memory_usage"`
 	//AssignedMemoryUsage        float64 `csv:"assigned_memory_usage"`
 	//UnmappedPageCache          float64 `csv:"unmapped_page_cache"`
 	//TotalPageCache             float64 `csv:"total_page_cache"`

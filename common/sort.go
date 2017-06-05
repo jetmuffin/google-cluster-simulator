@@ -1,4 +1,4 @@
-package base
+package common
 
 type JobShareSort []*Job
 

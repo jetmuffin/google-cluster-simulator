@@ -1,7 +1,7 @@
 package scheduler
 
 import (
-	. "github.com/JetMuffin/google-cluster-simulator/base"
+	. "github.com/JetMuffin/google-cluster-simulator/common"
 	. "github.com/JetMuffin/google-cluster-simulator/monitor"
 	log "github.com/Sirupsen/logrus"
 )

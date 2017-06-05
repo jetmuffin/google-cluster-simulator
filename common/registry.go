@@ -1,19 +1,17 @@
-package base
+package common
 
 import (
 	"sync"
 	log "github.com/Sirupsen/logrus"
-	"container/heap"
 	"math"
-	"sort"
+	"container/heap"
 )
 
 type Registry struct {
 	machines     map[int64]*Machine
 	machineMutex sync.RWMutex
 
-	jobs             map[int64]*Job
-	jobMutex         sync.RWMutex
+	jobs             *PriorityQueue
 	TotalWaitingTime int64 // start_time - submit_time
 	TotalRunningTime int64 // end_time - submit_time
 
@@ -25,9 +23,12 @@ type Registry struct {
 }
 
 func NewRegistry(events *EventHeap) *Registry {
+	jobs := new(PriorityQueue)
+	jobs.Init(10000000)
+
 	return &Registry{
 		machines: make(map[int64]*Machine),
-		jobs:     make(map[int64]*Job),
+		jobs:     jobs,
 		tasks:    make(map[int64]*Task),
 		events:   events,
 
@@ -37,62 +38,37 @@ func NewRegistry(events *EventHeap) *Registry {
 }
 
 func (r *Registry) GetJob(id int64) *Job {
-	r.jobMutex.RLock()
-	defer r.jobMutex.RUnlock()
-
-	if job, ok := r.jobs[id]; ok {
-		return job
-	} else {
-		return nil
-	}
+	return r.jobs.GetItem(id)
 }
 
 func (r *Registry) NextScheduleJob() *Job {
-	r.jobMutex.Lock()
-	defer r.jobMutex.Unlock()
-
-	if len(r.jobs) == 0 {
+	if r.jobs.Len() == 0 {
 		return nil
 	}
 
-	// TODO: sort more efficient
-	v := make([]*Job, 0, len(r.jobs))
-	for _, value := range r.jobs {
-		if value.taskQueue.Len() > 0 {
-			v = append(v, value)
-		}
-	}
-	if len(v) == 0 {
-		return nil
-	}
-	sort.Sort(JobShareSort(v))
-	return v[0]
+	job := r.jobs.MinItem()
+
+	return job
 }
 
 func (r *Registry) GetFirstTaskOfJob(job *Job) *Task {
-	r.jobMutex.Lock()
-	defer r.jobMutex.Unlock()
+	j := r.jobs.GetItem(job.JobID)
 
-	if job, ok := r.jobs[job.JobID]; ok && job.taskQueue.Len() > 0 {
+	if j != nil && job.taskQueue.Len() > 0 {
 		return job.taskQueue.Peek()
 	}
 	return nil
 }
 
 func (r *Registry) TaskLenOfJob(job *Job) int {
-	r.jobMutex.RLock()
-	defer r.jobMutex.RUnlock()
-
-	if job, ok := r.jobs[job.JobID]; ok {
-		return job.taskQueue.Len()
+	j := r.jobs.GetItem(job.JobID)
+	if j != nil {
+		return j.taskQueue.Len()
 	}
 	return 0
 }
 
 func (r *Registry) RunTaskOfJob(job *Job, time int64) *Task {
-	r.jobMutex.Lock()
-	defer r.jobMutex.Unlock()
-
 	if job.StartTime == 0 {
 		job.StartTime = time
 	}
@@ -102,23 +78,14 @@ func (r *Registry) RunTaskOfJob(job *Job, time int64) *Task {
 }
 
 func (r *Registry) JobLen() int {
-	r.jobMutex.RLock()
-	defer r.jobMutex.RUnlock()
-
-	return len(r.jobs)
+	return r.jobs.Len()
 }
 
 func (r *Registry) AddJob(job *Job) {
-	r.jobMutex.Lock()
-	defer r.jobMutex.Unlock()
-
-	r.jobs[job.JobID] = job
+	r.jobs.PushItem(job.JobID, job)
 }
 
 func (r *Registry) UpdateJob(job *Job, task *Task, totalCpu, totalMem float64, add bool) {
-	r.jobMutex.Lock()
-	defer r.jobMutex.Unlock()
-
 	if add {
 		job.CpuUsed += task.CpuRequest
 		job.MemUsed += task.MemoryRequest
@@ -128,30 +95,23 @@ func (r *Registry) UpdateJob(job *Job, task *Task, totalCpu, totalMem float64, a
 		job.TaskDone ++
 	}
 	job.Share = math.Max(job.CpuUsed/totalCpu, job.MemUsed/totalMem)
+	r.jobs.UpdateItem(job.JobID, job)
 }
 
 func (r *Registry) RemoveJob(job *Job, time int64) {
-	r.jobMutex.Lock()
-	defer r.jobMutex.Unlock()
+	r.jobs.RemoveItem(job.JobID)
 
-	if _, ok := r.jobs[job.JobID]; ok {
-		job.EndTime = time
-
-		r.TotalWaitingTime += job.StartTime - job.SubmitTime
-		r.TotalRunningTime += job.EndTime - job.SubmitTime
-
-		delete(r.jobs, job.JobID)
-	}
+	r.TotalWaitingTime += job.StartTime - job.SubmitTime
+	r.TotalRunningTime += job.EndTime - job.SubmitTime
 }
 
 func (r *Registry) AddTask(task *Task) {
-	r.taskMutex.Lock()
-	defer r.taskMutex.Unlock()
-
-	if job, ok := r.jobs[task.JobID]; ok {
+	job := r.jobs.GetItem(task.JobID)
+	if job != nil {
 		job.taskQueue.PushTask(task)
 		r.tasks[TaskID(task)] = task
 
+		r.jobs.UpdateItem(job.JobID, job)
 	}
 }
 

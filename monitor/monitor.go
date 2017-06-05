@@ -1,7 +1,7 @@
 package monitor
 
 import (
-	. "github.com/JetMuffin/google-cluster-simulator/base"
+	. "github.com/JetMuffin/google-cluster-simulator/common"
 	log "github.com/Sirupsen/logrus"
 )
 
