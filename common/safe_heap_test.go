@@ -36,31 +36,43 @@ var (
 
 func TestSafeHeap(t *testing.T) {
 	h.Init(1024)
+	var jobs []*Job
 	for _, j := range safeJobs {
-		h.PushItem(j.JobID, j, j.Share)
+		jb := NewJob(j)
+		jb.taskQueue.PushTask(&Task{})
+		jobs = append(jobs, jb)
 	}
 
-	job := h.MinItem().Value.(Job)
+	for _, j := range jobs {
+		h.PushItem(j.JobID, j)
+	}
+
+	job := h.MinItem()
 	if job.Share != 0.1 {
 		t.Error("Heap min item function implementation error!")
 	}
 
-	job = h.PopItem().Value.(Job)
+	job = h.PopItem()
 	if job.Share != 0.1 {
 		t.Logf("%+v", job)
 		t.Error("Heap pop item function implementation error!")
 	}
 
-	job = h.PopItem().Value.(Job)
+	job = h.PopItem()
 	if job.Share != 0.2 {
 		t.Logf("%+v", job)
 		t.Error("Heap pop item function implementation error!")
 	}
 
-	safeJobs[3].Share = 0.2
-	h.PushItem(safeJobs[3].JobID, safeJobs[3], safeJobs[3].Share)
-	job = h.MinItem().Value.(Job)
+	jobs[3].Share = 0.2
+	h.UpdateItem(jobs[3].JobID, jobs[3])
+	job = h.MinItem()
 	if job.Share != 0.2 {
+		t.Logf("%+v", job)
+		outJob := h.GetQueueItems()
+		for _, j := range outJob {
+			t.Logf("%+v", j)
+		}
 		t.Error("Heap min update function implementation error!")
 	}
 }

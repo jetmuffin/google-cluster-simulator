@@ -10,83 +10,81 @@ import (
 type Item struct {
 	Key      interface{} //The unique key of the item.
 	Value    interface{} // The value of the item; arbitrary.
-	Priority []float64     // The priority of the item in the queue.
 	Index    int         // The index of the item in the heap.
 }
 
-type ItemSlice struct {
-	items    []*Item
-	itemsMap map[interface{}]*Item
+type JobSlice struct {
+	items    []*Job
+	itemsMap map[interface{}]*Job
 }
 
-func cmp(priorityI, priorityJ []float64) bool {
-	sz := len(priorityI)
-	for k := 0; k < sz; k++ {
-		if priorityI[k] != priorityJ[k] {
-			return priorityI[k] < priorityJ[k]
+func cmp(i, j *Job) bool {
+	if i.taskQueue.Len() == 0 {
+		return false
+	} else if j.taskQueue.Len() == 0 {
+		return true
+	} else if i.Share == j.Share {
+		if i.taskQueue.Len() == j.taskQueue.Len() {
+			return i.SubmitTime < j.SubmitTime
+		} else {
+			return i.taskQueue.Len() > j.taskQueue.Len()
 		}
+	} else {
+		return i.Share < j.Share
 	}
-	return true
 }
 
-func (s ItemSlice) Len() int { return len(s.items) }
+func (s JobSlice) Len() int { return len(s.items) }
 
-func (s ItemSlice) Less(i, j int) bool {
-	return cmp(s.items[i].Priority, s.items[j].Priority)
+func (s JobSlice) Less(i, j int) bool {
+	return cmp(s.items[i], s.items[j])
 }
 
-func (s ItemSlice) Swap(i, j int) {
+func (s JobSlice) Swap(i, j int) {
 	s.items[i], s.items[j] = s.items[j], s.items[i]
-	s.items[i].Index = i
-	s.items[j].Index = j
+	s.items[i].index = i
+	s.items[j].index = j
 	if s.itemsMap != nil {
-		s.itemsMap[s.items[i].Key] = s.items[i]
-		s.itemsMap[s.items[j].Key] = s.items[j]
+		s.itemsMap[s.items[i].JobID] = s.items[i]
+		s.itemsMap[s.items[j].JobID] = s.items[j]
 	}
 }
 
-func (s *ItemSlice) Push(x interface{}) {
+func (s *JobSlice) Push(x interface{}) {
 	n := len(s.items)
-	item := x.(*Item)
-	item.Index = n
+	item := x.(*Job)
+	item.index = n
 	s.items = append(s.items, item)
-	s.itemsMap[item.Key] = item
+	s.itemsMap[item.JobID] = item
 }
 
-func (s *ItemSlice) Pop() interface{} {
+func (s *JobSlice) Pop() interface{} {
 	old := s.items
 	n := len(old)
 	item := old[n-1]
-	item.Index = -1 // for safety
-	delete(s.itemsMap, item.Key)
+	item.index = -1 // for safety
+	delete(s.itemsMap, item.JobID)
 	s.items = old[0: n-1]
 	return item
 }
 
 // update modifies the priority and value of an Item in the queue.
-func (s *ItemSlice) update(key interface{}, value interface{}, priority []float64) {
-	item := s.itemByKey(key)
-	if item != nil {
-		s.updateItem(item, value, priority)
+func (s *JobSlice) update(key interface{}, value *Job) {
+	if item, ok := s.itemsMap[key]; ok {
+		s.itemsMap[key] = value
+		heap.Fix(s, item.index)
 	}
-}
-
-// update modifies the priority and value of an Item in the queue.
-func (s *ItemSlice) updateItem(item *Item, value interface{}, priority []float64) {
-	item.Value = value
-	item.Priority = priority
-	heap.Fix(s, item.Index)
 }
 
 // delete function delete key value pairs in the map
-func (s *ItemSlice) delete(key interface{}) {
+func (s *JobSlice) remove(key interface{}) {
 	if item, ok := s.itemsMap[key]; ok {
 		delete(s.itemsMap, key)
-		heap.Remove(s, item.Index)
+		heap.Remove(s, item.index)
 	}
 }
 
-func (s *ItemSlice) itemByKey(key interface{}) *Item {
+func (s *JobSlice) itemByKey(key interface{}) *Job {
 	if item, found := s.itemsMap[key]; found {
 		return item
 	}
@@ -95,14 +93,14 @@ func (s *ItemSlice) itemByKey(key interface{}) *Item {
 
 // A PriorityQueue implements heap.Interface and holds Items.
 type PriorityQueue struct {
-	slice   ItemSlice
+	slice   JobSlice
 	maxSize int
 	mutex   sync.RWMutex
 }
 
 func (pq *PriorityQueue) Init(maxSize int) {
-	pq.slice.items = make([]*Item, 0, pq.maxSize)
-	pq.slice.itemsMap = make(map[interface{}]*Item)
+	pq.slice.items = make([]*Job, 0, pq.maxSize)
+	pq.slice.itemsMap = make(map[interface{}]*Job)
 	pq.maxSize = maxSize
 }
 
@@ -113,7 +111,7 @@ func (pq PriorityQueue) Len() int {
 	return size
 }
 
-func (pq *PriorityQueue) minItem() *Item {
+func (pq *PriorityQueue) minItem() *Job {
 	sz := pq.slice.Len()
 	if sz == 0 {
 		return nil
@@ -121,44 +119,52 @@ func (pq *PriorityQueue) minItem() *Item {
 	return pq.slice.items[0]
 }
 
-func (pq *PriorityQueue) MinItem() *Item {
+func (pq *PriorityQueue) MinItem() *Job {
 	pq.mutex.RLock()
 	defer pq.mutex.RUnlock()
 	return pq.minItem()
 }
 
-func (pq *PriorityQueue) PopItem() *Item {
+func (pq *PriorityQueue) PopItem() *Job {
 	pq.mutex.Lock()
 	defer pq.mutex.Unlock()
-	return heap.Pop(&(pq.slice)).(*Item)
+	return heap.Pop(&(pq.slice)).(*Job)
 }
 
-func (pq *PriorityQueue) PushItem(key, value interface{}, priority []float64) (bPushed bool) {
+func (pq *PriorityQueue) PushItem(key interface{}, value *Job) (bPushed bool) {
 	pq.mutex.Lock()
 	defer pq.mutex.Unlock()
 	size := pq.slice.Len()
 	item := pq.slice.itemByKey(key)
 	if size > 0 && item != nil {
-		pq.slice.updateItem(item, value, priority)
+		pq.slice.update(item, value)
 		return true
 	}
-	item = &Item{
-		Value:    value,
-		Key:      key,
-		Priority: priority,
-		Index:    -1,
-	}
 	if pq.maxSize <= 0 || size < pq.maxSize {
-		heap.Push(&(pq.slice), item)
+		heap.Push(&(pq.slice), value)
 		return true
 	}
 	min := pq.minItem()
-	if !cmp(min.Priority, priority) {
+	if !cmp(min, value) {
 		return false
 	}
 	heap.Pop(&(pq.slice))
 	heap.Push(&(pq.slice), item)
 	return true
+}
+
+func (pq *PriorityQueue) GetItem(key interface{}) *Job {
+	pq.mutex.Lock()
+	defer pq.mutex.Unlock()
+
+	return pq.slice.itemByKey(key)
+}
+
+func (pq *PriorityQueue) UpdateItem(key interface{}, value *Job) {
+	pq.mutex.Lock()
+	defer pq.mutex.Unlock()
+
+	pq.slice.update(key, value)
 }
 
 func (pq *PriorityQueue) RemoveItem(key interface{}) {
@@ -168,7 +174,7 @@ func (pq *PriorityQueue) RemoveItem(key interface{}) {
 	size := pq.slice.Len()
 	item := pq.slice.itemByKey(key)
 	if size > 0 && item != nil {
-		pq.slice.delete(key)
+		pq.slice.remove(key)
 	}
 }
 
@@ -176,25 +182,21 @@ func (pq PriorityQueue) GetQueue() []interface{} {
 	items := pq.GetQueueItems()
 	values := make([]interface{}, len(items))
 	for i := 0; i < len(items); i++ {
-		values[i] = items[i].Value
+		values[i] = items[i]
 	}
 	return values
 }
 
-func (pq PriorityQueue) GetQueueItems() []*Item {
+func (pq PriorityQueue) GetQueueItems() []*Job {
 	size := pq.Len()
 	if size == 0 {
-		return []*Item{}
+		return []*Job{}
 	}
-	s := ItemSlice{}
-	s.items = make([]*Item, size)
+	s := JobSlice{}
+	s.items = make([]*Job, size)
 	pq.mutex.RLock()
 	for i := 0; i < size; i++ {
-		s.items[i] = &Item{
-			Key:      pq.slice.items[i].Key,
-			Value:    pq.slice.items[i].Value,
-			Priority: pq.slice.items[i].Priority,
-		}
+		s.items[i] = pq.slice.items[i]
 	}
 	pq.mutex.RUnlock()
 	sort.Sort(sort.Reverse(s))
