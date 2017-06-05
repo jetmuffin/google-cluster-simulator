@@ -1,4 +1,4 @@
-package base
+package common
 
 type Config struct {
 	Debug     bool

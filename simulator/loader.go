@@ -2,9 +2,8 @@ package simulator
 
 import (
 	"os"
-	. "github.com/JetMuffin/google-cluster-simulator/base"
+	. "github.com/JetMuffin/google-cluster-simulator/common"
 	"github.com/JetMuffin/google-cluster-simulator/marshal"
-	log "github.com/Sirupsen/logrus"
 	"path"
 	"io/ioutil"
 	"sort"
@@ -67,7 +66,6 @@ func (t *TraceLoader) LoadJobs() ([]*Event, error) {
 	}
 
 	for _, j := range jobs {
-		log.Debugf("%+v", j)
 		events = append(events, &Event{
 			Time: j.SubmitTime,
 			EventOrigin: EVENT_JOB,
@@ -99,7 +97,6 @@ func (t *TraceLoader) LoadTasks() ([]*Event, error) {
 	}
 
 	for _, t := range tasks {
-		log.Debugf("%+v", t)
 		events = append(events, &Event{
 			Time: t.SubmitTime,
 			EventOrigin: EVENT_TASK,

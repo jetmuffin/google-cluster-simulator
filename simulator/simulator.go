@@ -2,7 +2,7 @@ package simulator
 
 import (
 	. "github.com/JetMuffin/google-cluster-simulator/scheduler"
-	. "github.com/JetMuffin/google-cluster-simulator/base"
+	. "github.com/JetMuffin/google-cluster-simulator/common"
 	. "github.com/JetMuffin/google-cluster-simulator/monitor"
 	log "github.com/Sirupsen/logrus"
 	"errors"
@@ -21,6 +21,9 @@ type Simulator struct {
 }
 
 func NewSimulator(config Config) (*Simulator, error) {
+	var eventHeap PriorityQueue
+	eventHeap.Init(10000000)
+
 	s := &Simulator{
 		loader:     NewLoader(config.Directory),
 		timeticker: new(int64),
@@ -32,10 +35,11 @@ func NewSimulator(config Config) (*Simulator, error) {
 	if err != nil {
 		return nil, err
 	}
+	for _, e := range events {
+		eventHeap.PushItem(e.Time, e, []float64{float64(e.Time)})
+	}
 
-	eventHeap := NewEventHeap(events)
 	s.registry = NewRegistry(&eventHeap)
-
 	s.monitor = NewMonitor(usage, s.registry, NewMonitorParam(config.Alpha, config.Beta, config.Theta, config.Lambda, config.Gamma), s.timeticker)
 	s.jobNum = jobNum
 

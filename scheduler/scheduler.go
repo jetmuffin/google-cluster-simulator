@@ -1,7 +1,7 @@
 package scheduler
 
 import (
-	. "github.com/JetMuffin/google-cluster-simulator/base"
+	. "github.com/JetMuffin/google-cluster-simulator/common"
 )
 
 type SchedulerType int

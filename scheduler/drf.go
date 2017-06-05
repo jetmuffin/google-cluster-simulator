@@ -1,7 +1,7 @@
 package scheduler
 
 import (
-	. "github.com/JetMuffin/google-cluster-simulator/base"
+	. "github.com/JetMuffin/google-cluster-simulator/common"
 	log "github.com/Sirupsen/logrus"
 	"fmt"
 )
@@ -118,10 +118,10 @@ func (d *DRFScheduler) ScheduleOnce() {
 
 			if task != nil && task.CpuRequest < d.totalCpu && task.MemoryRequest < d.totalMem {
 				d.runTask(job, task)
-
 				log.Debugf("[%v] %v tasks of Job %v run, resource available(%v %v)", *d.timeticker/1000/1000, task.TaskIndex, job.JobID, d.totalCpu, d.totalMem)
+
 			} else {
-				log.Debugf("No enough resource for task(%v) job(%v), request(%v %v), available(%v %v)", task.TaskIndex, task.JobID, task.CpuRequest, task.MemoryRequest, d.totalCpu, d.totalMem)
+				log.Warnf("No enough resource for task(%v) job(%v), request(%v %v), available(%v %v)", task.TaskIndex, task.JobID, task.CpuRequest, task.MemoryRequest, d.totalCpu, d.totalMem)
 			}
 		}
 	}
