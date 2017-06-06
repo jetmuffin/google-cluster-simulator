@@ -21,6 +21,7 @@ func usage() {
 
 func main() {
 	flag.BoolVar(&config.Debug, "debug", false, "Show debug logs")
+	flag.BoolVar(&config.Post, "post", false, "Post result to flask")
 	flag.StringVar(&config.Directory, "directory", "trace", "Directory of trace data")
 	flag.Float64Var(&config.Cpu, "cpu", 10.0, "Total cpu allowed to use")
 	flag.Float64Var(&config.Mem, "mem", 1024, "Total mem allowed to use")

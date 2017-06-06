@@ -6,6 +6,8 @@ import (
 	. "github.com/JetMuffin/google-cluster-simulator/monitor"
 	log "github.com/Sirupsen/logrus"
 	"errors"
+	"os"
+	"github.com/JetMuffin/google-cluster-simulator/util"
 )
 
 type Simulator struct {
@@ -13,6 +15,7 @@ type Simulator struct {
 	scheduler Scheduler
 	monitor   *Monitor
 	registry  *Registry
+	config    Config
 
 	jobNum int
 
@@ -25,6 +28,7 @@ func NewSimulator(config Config) (*Simulator, error) {
 		loader:     NewLoader(config.Directory),
 		timeticker: new(int64),
 		signal:     make(chan int, 1),
+		config:     config,
 	}
 
 	events, jobNum, err := s.loader.LoadMarshalEvents()
@@ -91,6 +95,20 @@ func (s *Simulator) statistic() {
 	averageRunningTime := float64(s.registry.TotalRunningTime) / 1000.0 / 1000.0 / float64(s.jobNum)
 	allDoneTime := *s.timeticker / 1000 / 1000
 
+	if s.config.Post {
+		url := os.Getenv("DATOM_FLASK_ENDPOINT")
+		util.Post(
+			url,
+			util.PostParam{
+				Cpu: s.config.Cpu,
+				Mem: s.config.Mem,
+				AverageWaitingTime: averageWaitingTime,
+				AverageRunningTime: averageRunningTime,
+				AllDoneTime: float64(allDoneTime),
+				Scheduler: int64(s.config.Scheduler),
+			},
+		)
+	}
 	log.Infof("Average running time: %v, average waiting time: %v, all job finished time: %v", averageRunningTime, averageWaitingTime, allDoneTime)
 }
 
@@ -116,8 +134,6 @@ func (s *Simulator) Run() {
 	}
 
 	log.Debug("Done")
-	archive := s.registry.ArchiveTask()
-	log.Infof("Task staging: %v, task running: %v, task finished: %v", len(archive[TASK_STATUS_STAGING]), len(archive[TASK_STATUS_RUNNING]), len(archive[TASK_STATUS_FINISHED]))
 
 	s.statistic()
 }
