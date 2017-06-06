@@ -2,6 +2,7 @@ package common
 
 type Config struct {
 	Debug     bool
+	Post 	  bool
 	Directory string
 
 	Cpu float64

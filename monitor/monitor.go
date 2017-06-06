@@ -78,16 +78,27 @@ func (m *Monitor) RunForever() {
 		for {
 			m.RunOnce()
 		}
-	} ()
+	}()
 }
 
-func (m *Monitor) RunOnce() {
-	// TODO: do not record all the time
-	for _, task := range m.registry.FilterTask(func(task *Task) bool { return task.Status == TASK_STATUS_RUNNING }) {
+func (m *Monitor) RunOnce() (float64, float64) {
+	slackCpu := 0.0
+	slackMem := 0.0
+
+	//for _, task := range m.registry.FilterTask(func(task *Task) bool { return task.Status == TASK_STATUS_RUNNING}) {
+	for _, task := range m.registry.GetRunningService() {
 		if m.SlackResource(task) {
 			log.Debugf("Slack resource for task(%v) job(%v): cpu(%v/%v) mem(%v/%v)", task.TaskIndex, task.JobID, task.CpuSlack, task.CpuRequest, task.MemSlack, task.MemoryRequest)
 		}
+		if task.CpuSlack > 0 {
+			slackCpu += task.CpuSlack
+		}
+		if task.MemSlack > 0 {
+			slackMem += task.MemSlack
+		}
 	}
+
+	return slackCpu, slackMem
 }
 
 func (m *Monitor) SlackResource(task *Task) bool {
@@ -100,6 +111,10 @@ func (m *Monitor) SlackResource(task *Task) bool {
 	task.CpuSlack = task.CpuRequest - m.cpuSlack[taskId][windowNum-1]
 	task.MemSlack = task.MemoryRequest - m.memSlack[taskId][windowNum-1]
 	m.registry.UpdateTask(task)
+
+	if task.CpuSlack < 0 || task.MemSlack < 0 {
+		return false
+	}
 
 	return true
 }

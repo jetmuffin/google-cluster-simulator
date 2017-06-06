@@ -15,8 +15,9 @@ type Registry struct {
 	TotalWaitingTime int64 // start_time - submit_time
 	TotalRunningTime int64 // end_time - submit_time
 
-	tasks     map[int64]*Task
-	taskMutex sync.RWMutex
+	tasks          map[int64]*Task
+	runningService map[int64]*Task
+	taskMutex      sync.RWMutex
 
 	events      *EventHeap
 	eventsMutex sync.RWMutex
@@ -27,10 +28,11 @@ func NewRegistry(events *EventHeap) *Registry {
 	jobs.Init(10000000)
 
 	return &Registry{
-		machines: make(map[int64]*Machine),
-		jobs:     jobs,
-		tasks:    make(map[int64]*Task),
-		events:   events,
+		machines:       make(map[int64]*Machine),
+		jobs:           jobs,
+		tasks:          make(map[int64]*Task),
+		runningService: make(map[int64]*Task),
+		events:         events,
 
 		TotalRunningTime: 0,
 		TotalWaitingTime: 0,
@@ -101,6 +103,7 @@ func (r *Registry) UpdateJob(job *Job, task *Task, totalCpu, totalMem float64, a
 func (r *Registry) RemoveJob(job *Job, time int64) {
 	r.jobs.RemoveItem(job.JobID)
 
+	job.EndTime = time
 	r.TotalWaitingTime += job.StartTime - job.SubmitTime
 	r.TotalRunningTime += job.EndTime - job.SubmitTime
 }
@@ -115,6 +118,50 @@ func (r *Registry) AddTask(task *Task) {
 	}
 }
 
+func (r *Registry) AddRunningService(task *Task) {
+	if task.Duration < 900000000 || task.Status != TASK_STATUS_RUNNING {
+		return
+	}
+	r.taskMutex.Lock()
+	defer r.taskMutex.Unlock()
+
+	r.runningService[TaskID(task)] = task
+}
+
+func (r *Registry) GetRunningService() []*Task {
+	r.taskMutex.RLock()
+	defer r.taskMutex.RUnlock()
+
+	var services []*Task
+	for _, t := range r.runningService {
+		services = append(services, t)
+	}
+
+	return services
+}
+
+func (r *Registry) RemoveRunningService(task *Task) {
+	if task.Duration < 900000000 || task.Status != TASK_STATUS_RUNNING {
+		return
+	}
+	r.taskMutex.Lock()
+	defer r.taskMutex.Unlock()
+
+
+	if _, ok := r.runningService[TaskID(task)]; ok {
+		delete(r.runningService, TaskID(task))
+	} else {
+		log.Errorf("Task not found when remove running service: job(%v) index(%v)", task.JobID, task.TaskIndex)
+	}
+}
+
+func (r *Registry) TaskLen() int {
+	r.taskMutex.RLock()
+	defer r.taskMutex.RUnlock()
+
+	return len(r.tasks)
+}
+
 func (r *Registry) UpdateTask(task *Task) {
 	r.taskMutex.Lock()
 	defer r.taskMutex.Unlock()
@@ -122,7 +169,7 @@ func (r *Registry) UpdateTask(task *Task) {
 	if _, ok := r.tasks[TaskID(task)]; ok {
 		r.tasks[TaskID(task)] = task
 	} else {
-		log.Errorf("Task not found: job(%v) index(%v)", task.JobID, task.TaskIndex)
+		log.Errorf("Task not found when update task: job(%v) index(%v)", task.JobID, task.TaskIndex)
 	}
 
 }
@@ -134,7 +181,7 @@ func (r *Registry) RemoveTask(task *Task) {
 	if _, ok := r.tasks[TaskID(task)]; ok {
 		delete(r.tasks, TaskID(task))
 	} else {
-		log.Errorf("Task not found: job(%v) index(%v)", task.JobID, task.TaskIndex)
+		log.Errorf("Task not found when remove task: job(%v) index(%v)", task.JobID, task.TaskIndex)
 	}
 }
 

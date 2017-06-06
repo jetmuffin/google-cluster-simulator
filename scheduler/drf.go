@@ -49,10 +49,13 @@ func (d *DRFScheduler) ScheduleTask(task *Task) {
 	task.Status = TASK_STATUS_RUNNING
 	task.StartTime = *d.timeticker
 	d.registry.UpdateTask(task)
+
+	d.registry.AddRunningService(task)
 }
 
 func (d *DRFScheduler) CompleteTask(task *Task) {
-	//d.registry.RemoveTask(task)
+	d.registry.RemoveRunningService(task)
+
 	task.Status = TASK_STATUS_FINISHED
 	task.EndTime = *d.timeticker
 	job := d.registry.GetJob(task.JobID)
@@ -60,14 +63,18 @@ func (d *DRFScheduler) CompleteTask(task *Task) {
 		d.registry.UpdateJob(job, task, d.totalCpu, d.totalMem, false)
 		d.registry.UpdateTask(task)
 
-		d.totalCpu += task.CpuRequest
-		d.totalMem += task.MemoryRequest
+		if !task.Oversubscribe {
+			d.totalCpu += task.CpuRequest
+			d.totalMem += task.MemoryRequest
+		}
 
 		if job.Done() {
 			d.CompleteJob(job)
 			log.Infof("[%v] Job %v done(%v/%v)", *d.timeticker/1000/1000, job.JobID, d.jobDone, d.jobNum)
 		}
 	}
+
+	d.registry.RemoveTask(task)
 }
 
 func (d *DRFScheduler) runTask(job *Job, task *Task) {
@@ -90,8 +97,10 @@ func (d *DRFScheduler) runTask(job *Job, task *Task) {
 	d.registry.UpdateJob(job, task, d.totalCpu, d.totalMem, true)
 	d.registry.RunTaskOfJob(job, *d.timeticker)
 
-	d.totalCpu -= task.CpuRequest
-	d.totalMem -= task.MemoryRequest
+	if !task.Oversubscribe {
+		d.totalCpu -= task.CpuRequest
+		d.totalMem -= task.MemoryRequest
+	}
 }
 
 func (d *DRFScheduler) Progress() string {
@@ -121,7 +130,7 @@ func (d *DRFScheduler) ScheduleOnce() {
 				log.Debugf("[%v] %v tasks of Job %v run, resource available(%v %v)", *d.timeticker/1000/1000, task.TaskIndex, job.JobID, d.totalCpu, d.totalMem)
 
 			} else {
-				log.Warnf("No enough resource for task(%v) job(%v), request(%v %v), available(%v %v)", task.TaskIndex, task.JobID, task.CpuRequest, task.MemoryRequest, d.totalCpu, d.totalMem)
+				log.Debugf("No enough resource for task(%v) job(%v), request(%v %v), available(%v %v)", task.TaskIndex, task.JobID, task.CpuRequest, task.MemoryRequest, d.totalCpu, d.totalMem)
 			}
 		}
 	}

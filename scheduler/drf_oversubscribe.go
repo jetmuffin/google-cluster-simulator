@@ -11,6 +11,9 @@ type DRFOScheduler struct {
 
 	drf DRFScheduler
 	Scheduler
+
+	oversubscribeCpu float64
+	oversubscribeMem float64
 }
 
 func NewDRFOScheduler(monitor *Monitor, registry *Registry, timeticker *int64, signal chan int, jobNum int, cpu float64, mem float64) *DRFOScheduler {
@@ -45,6 +48,11 @@ func (d *DRFOScheduler) ScheduleTask(task *Task) {
 
 func (d *DRFOScheduler) CompleteTask(task *Task) {
 	d.drf.CompleteTask(task)
+
+	if task.Oversubscribe {
+		d.oversubscribeCpu -= task.CpuRequest
+		d.oversubscribeMem -= task.MemoryRequest
+	}
 }
 
 func (d *DRFOScheduler) Progress() string {
@@ -63,13 +71,12 @@ func (d *DRFOScheduler) Schedule() {
 	}()
 }
 
-func (d *DRFOScheduler) runOversubscribeTask(job *Job, be *Task, lrs *Task) {
+func (d *DRFOScheduler) runOversubscribeTask(job *Job, be *Task) {
 	be.Oversubscribe = true
 	d.drf.runTask(job, be)
 
-	lrs.CpuSlack -= be.CpuRequest
-	lrs.MemSlack -= be.CpuRequest
-	d.drf.registry.UpdateTask(lrs)
+	d.oversubscribeCpu += be.CpuRequest
+	d.oversubscribeMem += be.MemoryRequest
 }
 
 func (d *DRFOScheduler) ScheduleOnce() {
@@ -84,18 +91,11 @@ func (d *DRFOScheduler) ScheduleOnce() {
 				log.Debugf("[%v] %v tasks of Job %v run, resource available(%v %v)", *d.drf.timeticker/1000/1000, task.TaskIndex, job.JobID, d.drf.totalCpu, d.drf.totalMem)
 			} else {
 				log.Debugf("No enough resource for task(%v) job(%v), request(%v %v), available(%v %v)", task.TaskIndex, task.JobID, task.CpuRequest, task.MemoryRequest, d.drf.totalCpu, d.drf.totalMem)
-				d.monitor.RunOnce()
-				oversubscribeCandidates := d.drf.registry.FilterTask(func(task *Task) bool {
-					return task.Status == TASK_STATUS_RUNNING && task.Duration > 600000000 && task.CpuSlack > 0 && task.MemSlack > 0
-				})
+				slackCpu, slackMem := d.monitor.RunOnce()
 
-				log.Debugf("Found %d candidates for oversubscription", len(oversubscribeCandidates))
-				for _, oversubscribeTask := range oversubscribeCandidates {
-					if oversubscribeTask.CpuSlack > task.CpuRequest && oversubscribeTask.MemSlack > task.MemoryRequest {
-						d.runOversubscribeTask(job, task, oversubscribeTask)
-						log.Debugf("Oversubscribe on task(%v)-job(%v) for task(%v)-job(%v)", oversubscribeTask.TaskIndex, oversubscribeTask.JobID, task.TaskIndex, task.JobID)
-						break
-					}
+				log.Debugf("Revocable resource: cpu(%v/%v), mem(%v/%v)", slackCpu - d.oversubscribeCpu, slackCpu, slackMem - d.oversubscribeMem, slackMem)
+				if task.CpuRequest < (slackCpu - d.oversubscribeCpu) && task.MemoryRequest < (slackMem - d.oversubscribeMem) {
+					d.runOversubscribeTask(job, task)
 				}
 			}
 		}
