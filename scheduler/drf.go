@@ -127,6 +127,7 @@ func (d *DRFScheduler) ScheduleOnce() {
 
 			if task != nil && task.CpuRequest < d.totalCpu && task.MemoryRequest < d.totalMem {
 				d.runTask(job, task)
+				d.registry.CountJainsFairIndex()
 				log.Debugf("[%v] %v tasks of Job %v run, resource available(%v %v)", *d.timeticker/1000/1000, task.TaskIndex, job.JobID, d.totalCpu, d.totalMem)
 
 			} else {

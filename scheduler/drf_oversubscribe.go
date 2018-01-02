@@ -87,6 +87,7 @@ func (d *DRFOScheduler) ScheduleOnce() {
 
 			if task != nil && task.CpuRequest < d.drf.totalCpu && task.MemoryRequest < d.drf.totalMem {
 				d.drf.runTask(job, task)
+				d.drf.registry.CountJainsFairIndex()
 
 				log.Debugf("[%v] %v tasks of Job %v run, resource available(%v %v)", *d.drf.timeticker/1000/1000, task.TaskIndex, job.JobID, d.drf.totalCpu, d.drf.totalMem)
 			} else {
@@ -96,6 +97,7 @@ func (d *DRFOScheduler) ScheduleOnce() {
 				log.Debugf("Revocable resource: cpu(%v/%v), mem(%v/%v)", slackCpu - d.oversubscribeCpu, slackCpu, slackMem - d.oversubscribeMem, slackMem)
 				if task.CpuRequest < (slackCpu - d.oversubscribeCpu) && task.MemoryRequest < (slackMem - d.oversubscribeMem) {
 					d.runOversubscribeTask(job, task)
+					d.drf.registry.CountJainsFairIndex()
 				}
 			}
 		}

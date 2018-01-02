@@ -2,7 +2,6 @@ package common
 
 import (
 	"container/heap"
-	"sort"
 	"sync"
 )
 
@@ -178,27 +177,17 @@ func (pq *PriorityQueue) RemoveItem(key interface{}) {
 	}
 }
 
-func (pq PriorityQueue) GetQueue() []interface{} {
-	items := pq.GetQueueItems()
-	values := make([]interface{}, len(items))
-	for i := 0; i < len(items); i++ {
-		values[i] = items[i]
-	}
-	return values
-}
-
-func (pq PriorityQueue) GetQueueItems() []*Job {
-	size := pq.Len()
-	if size == 0 {
+func (pq PriorityQueue) GetItems() []*Job {
+	sz := pq.Len()
+	if sz == 0 {
 		return []*Job{}
 	}
-	s := JobSlice{}
-	s.items = make([]*Job, size)
+
+	s := make([]*Job, sz)
 	pq.mutex.RLock()
-	for i := 0; i < size; i++ {
-		s.items[i] = pq.slice.items[i]
+	for i := 0; i < sz; i++ {
+		s[i] = pq.slice.items[i]
 	}
 	pq.mutex.RUnlock()
-	sort.Sort(sort.Reverse(s))
-	return s.items
+	return s
 }

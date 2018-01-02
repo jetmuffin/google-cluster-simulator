@@ -15,6 +15,7 @@ type PostParam struct {
 	AverageWaitingTime float64
 	AllDoneTime        float64
 	Scheduler          int64
+	JainsFairIndex     float64
 }
 
 func Post(apiUrl string, param PostParam) error {
@@ -25,6 +26,7 @@ func Post(apiUrl string, param PostParam) error {
 		"avg_running_time":   {fmt.Sprintf("%.6f", param.AverageRunningTime)},
 		"total_running_time": {fmt.Sprintf("%.6f", param.AllDoneTime)},
 		"scheduler":          {fmt.Sprintf("%d", param.Scheduler)},
+		"jains_fair_index":   {fmt.Sprintf("%.6f", param.JainsFairIndex)},
 		"timestamp":          {fmt.Sprintf("%d", time.Now().Unix())},
 	}
 

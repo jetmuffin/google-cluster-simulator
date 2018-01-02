@@ -106,10 +106,12 @@ func (s *Simulator) statistic() {
 				AverageRunningTime: averageRunningTime,
 				AllDoneTime: float64(allDoneTime),
 				Scheduler: int64(s.config.Scheduler),
+				JainsFairIndex: s.registry.GetJainsFairIndex(),
 			},
 		)
 	}
 	log.Infof("Average running time: %v, average waiting time: %v, all job finished time: %v", averageRunningTime, averageWaitingTime, allDoneTime)
+	log.Infof("Jain's fair index: avg(%v), max(%v) min(%v)", s.registry.GetJainsFairIndex(),    s.registry.MaxIndex, s.registry.MinIndex)
 }
 
 func (s *Simulator) Run() {

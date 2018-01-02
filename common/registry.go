@@ -21,6 +21,11 @@ type Registry struct {
 
 	events      *EventHeap
 	eventsMutex sync.RWMutex
+
+	totalIndex float64
+	countIndex int
+	MaxIndex   float64
+	MinIndex   float64
 }
 
 func NewRegistry(events *EventHeap) *Registry {
@@ -36,7 +41,47 @@ func NewRegistry(events *EventHeap) *Registry {
 
 		TotalRunningTime: 0,
 		TotalWaitingTime: 0,
+
+		MaxIndex: 0,
+		MinIndex: 1,
 	}
+}
+
+func (r *Registry) CountJainsFairIndex() float64 {
+	jobs := r.jobs.GetItems()
+	sz := float64(len(jobs))
+	totalCpu := 0.0
+	totalMem := 0.0
+	totalSquareCpu := 0.0
+	totalSquareMem := 0.0
+
+	for _, job := range jobs {
+		totalCpu += job.CpuUsed
+		totalMem += job.MemUsed
+		totalSquareCpu += job.CpuUsed * job.CpuUsed
+		totalSquareMem += job.MemUsed * job.MemUsed
+	}
+
+	index := (totalCpu*totalCpu + totalMem*totalMem) / (totalSquareCpu + totalSquareMem) / sz
+
+	r.countIndex ++
+	r.totalIndex += index
+	if index > r.MaxIndex {
+		r.MaxIndex = index
+	}
+	if index < r.MinIndex {
+		r.MinIndex = index
+	}
+
+	return index
+}
+
+func (r *Registry) GetJainsFairIndex() float64 {
+	if r.countIndex == 0 {
+		return 0
+	}
+
+	return r.totalIndex / float64(r.countIndex)
 }
 
 func (r *Registry) GetJob(id int64) *Job {
@@ -146,7 +191,6 @@ func (r *Registry) RemoveRunningService(task *Task) {
 	}
 	r.taskMutex.Lock()
 	defer r.taskMutex.Unlock()
-
 
 	if _, ok := r.runningService[TaskID(task)]; ok {
 		delete(r.runningService, TaskID(task))
