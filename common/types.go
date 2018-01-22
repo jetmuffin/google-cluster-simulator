@@ -1,10 +1,5 @@
 package common
 
-import (
-	"strings"
-	"errors"
-)
-
 const (
 	TIME_DELAY = 0
 )
@@ -14,20 +9,22 @@ type Machine struct {
 	PlatformID string
 	Cpus       float64
 	Mem        float64
+	UsedCpus   float64
+	UsedMem    float64
 }
 
 type Job struct {
 	MissingInfo     int64
-	JobID           int64        `csv:"job_id"`
+	JobID           int64 `csv:"job_id"`
 	User            string
 	SchedulingClass int64
 	JobName         string
 	LogicalJobName  string
-	TaskNum         int64        `csv:"task_num"`
-	SubmitTime      int64        `csv:"submit_time"`
+	TaskNum         int64 `csv:"task_num"`
+	SubmitTime      int64 `csv:"submit_time"`
 	StartTime       int64
 	EndTime         int64
-	Duration        int64        `csv:"duration"`
+	Duration        int64 `csv:"duration"`
 
 	Share      float64
 	index      int
@@ -36,7 +33,7 @@ type Job struct {
 	MemUsed    float64
 	TaskDone   int64
 	TaskSubmit int64
-	taskQueue  *SyncTaskQueue
+	taskQueue  map[int64]*Task
 }
 
 func NewJob(job Job) *Job {
@@ -49,15 +46,13 @@ func NewJob(job Job) *Job {
 		Duration:   job.Duration,
 		Share:      job.Share,
 
-		taskQueue: NewSyncTaskQueue(),
+		taskQueue: make(map[int64]*Task),
 	}
-
 }
 
 func (job *Job) Done() bool {
 	return job.TaskDone == job.TaskNum
 }
-
 
 type TaskStatus int
 
@@ -65,12 +60,13 @@ const (
 	TASK_STATUS_FINISHED TaskStatus = iota
 	TASK_STATUS_RUNNING
 	TASK_STATUS_STAGING
+	TASK_STATUS_KILLED
 )
 
 type Task struct {
 	MissingInfo                  int64
-	JobID                        int64 `csv:"job_id"`
-	TaskIndex                    int64 `csv:"task_index"`
+	JobID                        int64   `csv:"job_id"`
+	TaskIndex                    int64   `csv:"task_index"`
 	MachineID                    int64
 	User                         string
 	SchedulingClass              int64
@@ -79,10 +75,10 @@ type Task struct {
 	MemoryRequest                float64 `csv:"memory_request"`
 	DiskSpaceRequest             float64
 	DifferentMachinesRestriction bool
-	SubmitTime                   int64 `csv:"submit_time"`
+	SubmitTime                   int64   `csv:"submit_time"`
 	StartTime                    int64
 	EndTime                      int64
-	Duration                     int64 `csv:"duration"`
+	Duration                     int64   `csv:"duration"`
 
 	Status        TaskStatus
 	CpuSlack      float64
@@ -169,71 +165,60 @@ func (e EventSlice) Less(i, j int) bool {
 	return e[j].Time > e[i].Time
 }
 
-func ParseMachineEvent(line string) (*Event, error) {
-	splits := strings.Split(line, ",")
-	if len(splits) != 6 {
-		return nil, errors.New("machine event lost some fields")
-	}
-
+func ParseMachineEvent(record []string) (*Event, error) {
 	machine := &Machine{
-		MachineID:  stringToInt64(splits[1], 0),
-		PlatformID: splits[3],
-		Cpus:       stringToFloat64(splits[4], 0.0),
-		Mem:        stringToFloat64(splits[5], 0.0),
+		MachineID:  stringToInt64(record[1], 0),
+		PlatformID: record[3],
+		Cpus:       stringToFloat64(record[4], 0.0),
+		Mem:        stringToFloat64(record[5], 0.0),
+		UsedCpus:   0.0,
+		UsedMem:    0.0,
 	}
 
 	return &Event{
-		Time:             stringToInt64(splits[0], 0),
-		MachineEventType: MachineEventType(stringToInt64(splits[2], 0)),
+		Time:             stringToInt64(record[0], 0),
+		MachineEventType: MachineEventType(stringToInt64(record[2], 0)),
 		Machine:          machine,
 		EventOrigin:      EVENT_MACHINE,
 	}, nil
 }
 
-func ParseTaskEvent(line string) (*Event, error) {
-	splits := strings.Split(line, ",")
-	if len(splits) != 13 {
-		return nil, errors.New("task event lost some fields")
-	}
-
+func ParseTaskEvent(record []string) (*Event, error) {
 	task := &Task{
-		JobID:                        stringToInt64(splits[2], 0),
-		TaskIndex:                    stringToInt64(splits[3], 0),
-		MachineID:                    stringToInt64(splits[4], 0),
-		User:                         splits[6],
-		SchedulingClass:              stringToInt64(splits[7], 0),
-		Priority:                     stringToInt64(splits[8], 0),
-		CpuRequest:                   stringToFloat64(splits[9], 0.0),
-		MemoryRequest:                stringToFloat64(splits[10], 0.0),
-		DiskSpaceRequest:             stringToFloat64(splits[11], 0.0),
-		DifferentMachinesRestriction: stringToBool(splits[12], false),
+		JobID:                        stringToInt64(record[3], 0),
+		TaskIndex:                    stringToInt64(record[4], 0),
+		MachineID:                    stringToInt64(record[5], 0),
+		User:                         record[7],
+		SchedulingClass:              stringToInt64(record[8], 0),
+		Priority:                     stringToInt64(record[9], 0),
+		CpuRequest:                   stringToFloat64(record[10], 0.0),
+		MemoryRequest:                stringToFloat64(record[11], 0.0),
+		DiskSpaceRequest:             stringToFloat64(record[12], 0.0),
+		DifferentMachinesRestriction: stringToBool(record[13], false),
+		Duration:                     stringToInt64(record[15], 0),
 	}
 
 	return &Event{
-		Time:          stringToInt64(splits[0], 0),
-		TaskEventType: TaskEventType(stringToInt64(splits[5], 0)),
+		Time:          stringToInt64(record[1], 0),
+		TaskEventType: TaskEventType(stringToInt64(record[6], 0)),
 		Task:          task,
 		EventOrigin:   EVENT_TASK,
 	}, nil
 }
 
-func ParseJobEvent(line string) (*Event, error) {
-	splits := strings.Split(line, ",")
-	if len(splits) != 8 {
-		return nil, errors.New("job event lost some fields")
-	}
-
+func ParseJobEvent(record []string) (*Event, error) {
 	job := &Job{
-		JobID:           stringToInt64(splits[2], 0),
-		User:            splits[4],
-		SchedulingClass: stringToInt64(splits[5], 0),
-		JobName:         splits[6],
-		LogicalJobName:  splits[7],
+		JobID:           stringToInt64(record[3], 0),
+		User:            record[5],
+		SchedulingClass: stringToInt64(record[6], 0),
+		JobName:         record[7],
+		LogicalJobName:  record[8],
+		TaskNum:         stringToInt64(record[9],0),
 	}
 
 	return &Event{
-		Time:          stringToInt64(splits[0], 0),
-		TaskEventType: TaskEventType(stringToInt64(splits[3], 0)),
+		Time:          stringToInt64(record[1], 0),
+		TaskEventType: TaskEventType(stringToInt64(record[4], 0)),
 		Job:           job,
 		EventOrigin:   EVENT_JOB,
 	}, nil
@@ -270,5 +255,16 @@ func NewTaskUsage(t TaskUsage) *TaskUsage {
 		TaskIndex:   t.TaskIndex,
 		CpuUsage:    t.CpuUsage,
 		MemoryUsage: t.MemoryUsage,
+	}
+}
+
+func ParseTaskUsage(record []string) TaskUsage {
+	return TaskUsage{
+		StartTime:   stringToInt64(record[4], 0),
+		EndTime:     stringToInt64(record[5], 0),
+		JobID:       stringToInt64(record[0], 0),
+		TaskIndex:   stringToInt64(record[1], 0),
+		CpuUsage:    stringToFloat64(record[2], 0.0),
+		MemoryUsage: stringToFloat64(record[3], 0.0),
 	}
 }

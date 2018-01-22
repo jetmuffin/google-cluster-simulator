@@ -18,15 +18,15 @@ type JobSlice struct {
 }
 
 func cmp(i, j *Job) bool {
-	if i.taskQueue.Len() == 0 {
+	if len(i.taskQueue) == 0 {
 		return false
-	} else if j.taskQueue.Len() == 0 {
+	} else if len(j.taskQueue) == 0 {
 		return true
 	} else if i.Share == j.Share {
-		if i.taskQueue.Len() == j.taskQueue.Len() {
+		if len(i.taskQueue) == len(j.taskQueue) {
 			return i.SubmitTime < j.SubmitTime
 		} else {
-			return i.taskQueue.Len() > j.taskQueue.Len()
+			return len(i.taskQueue) > len(j.taskQueue)
 		}
 	} else {
 		return i.Share < j.Share

@@ -22,10 +22,12 @@ type Registry struct {
 	events      *EventHeap
 	eventsMutex sync.RWMutex
 
-	totalIndex float64
-	countIndex int
-	MaxIndex   float64
-	MinIndex   float64
+	totalIndex    float64
+	countIndex    int
+	lastIndexTime int64
+
+	MaxIndex float64
+	MinIndex float64
 }
 
 func NewRegistry(events *EventHeap) *Registry {
@@ -42,46 +44,52 @@ func NewRegistry(events *EventHeap) *Registry {
 		TotalRunningTime: 0,
 		TotalWaitingTime: 0,
 
-		MaxIndex: 0,
-		MinIndex: 1,
+		MaxIndex:      0,
+		MinIndex:      1,
+		lastIndexTime: 0,
+		totalIndex:    0.0,
 	}
 }
 
-func (r *Registry) CountJainsFairIndex() float64 {
+func (r *Registry) CountJainsFairIndex(time int64) float64 {
 	jobs := r.jobs.GetItems()
-	sz := float64(len(jobs))
+	count := 0
 	totalCpu := 0.0
 	totalMem := 0.0
 	totalSquareCpu := 0.0
 	totalSquareMem := 0.0
 
 	for _, job := range jobs {
-		totalCpu += job.CpuUsed
-		totalMem += job.MemUsed
-		totalSquareCpu += job.CpuUsed * job.CpuUsed
-		totalSquareMem += job.MemUsed * job.MemUsed
+
+		if job.CpuUsed > 0 || job.MemUsed > 0 {
+			//log.Info(job.JobID, job.CpuUsed, job.MemUsed)
+			count++
+
+			totalCpu += job.CpuUsed
+			totalMem += job.MemUsed
+			totalSquareCpu += job.CpuUsed * job.CpuUsed
+			totalSquareMem += job.MemUsed * job.MemUsed
+		}
 	}
 
-	index := (totalCpu*totalCpu + totalMem*totalMem) / (totalSquareCpu + totalSquareMem) / sz
-
-	r.countIndex ++
-	r.totalIndex += index
-	if index > r.MaxIndex {
-		r.MaxIndex = index
-	}
-	if index < r.MinIndex {
-		r.MinIndex = index
+	var index float64
+	if ((totalSquareCpu+totalSquareMem) > 0 && count != 0) {
+		index = (totalCpu*totalCpu + totalMem*totalMem) / (totalSquareCpu + totalSquareMem) / float64(count)
+	} else {
+		index = 1
 	}
 
+	log.Debug(index)
+	r.totalIndex += float64(time-r.lastIndexTime) * index
+	r.lastIndexTime = time
 	return index
 }
 
-func (r *Registry) GetJainsFairIndex() float64 {
-	if r.countIndex == 0 {
+func (r *Registry) GetJainsFairIndex(duration int64) float64 {
+	if duration == 0 {
 		return 0
 	}
-
-	return r.totalIndex / float64(r.countIndex)
+	return r.totalIndex / float64(duration)
 }
 
 func (r *Registry) GetJob(id int64) *Job {
@@ -98,30 +106,12 @@ func (r *Registry) NextScheduleJob() *Job {
 	return job
 }
 
-func (r *Registry) GetFirstTaskOfJob(job *Job) *Task {
-	j := r.jobs.GetItem(job.JobID)
-
-	if j != nil && job.taskQueue.Len() > 0 {
-		return job.taskQueue.Peek()
-	}
-	return nil
-}
-
 func (r *Registry) TaskLenOfJob(job *Job) int {
 	j := r.jobs.GetItem(job.JobID)
 	if j != nil {
-		return j.taskQueue.Len()
+		return len(j.taskQueue)
 	}
 	return 0
-}
-
-func (r *Registry) RunTaskOfJob(job *Job, time int64) *Task {
-	if job.StartTime == 0 {
-		job.StartTime = time
-	}
-	task := job.taskQueue.PopTask()
-
-	return task
 }
 
 func (r *Registry) JobLen() int {
@@ -129,10 +119,10 @@ func (r *Registry) JobLen() int {
 }
 
 func (r *Registry) AddJob(job *Job) {
-	r.jobs.PushItem(job.JobID, job)
+	r.jobs.PushItem(job.JobID, NewJob(*job))
 }
 
-func (r *Registry) UpdateJob(job *Job, task *Task, totalCpu, totalMem float64, add bool) {
+func (r *Registry) UpdateJob(job *Job, task *Task, add bool) {
 	if add {
 		job.CpuUsed += task.CpuRequest
 		job.MemUsed += task.MemoryRequest
@@ -141,8 +131,20 @@ func (r *Registry) UpdateJob(job *Job, task *Task, totalCpu, totalMem float64, a
 		job.MemUsed -= task.MemoryRequest
 		job.TaskDone ++
 	}
+
+	totalCpu, totalMem := r.TotalResources()
 	job.Share = math.Max(job.CpuUsed/totalCpu, job.MemUsed/totalMem)
 	r.jobs.UpdateItem(job.JobID, job)
+}
+
+func (r *Registry) WaitingTasks(job *Job) map[int64]*Task {
+	result := make(map[int64]*Task)
+	for _, task := range job.taskQueue {
+		if task.Status == TASK_STATUS_STAGING {
+			result[task.TaskIndex] = task
+		}
+	}
+	return result
 }
 
 func (r *Registry) RemoveJob(job *Job, time int64) {
@@ -156,46 +158,13 @@ func (r *Registry) RemoveJob(job *Job, time int64) {
 func (r *Registry) AddTask(task *Task) {
 	job := r.jobs.GetItem(task.JobID)
 	if job != nil {
-		job.taskQueue.PushTask(task)
+		if t, ok := job.taskQueue[task.TaskIndex]; ok {
+			log.Debugf("Kill old task and submit new task for task(%v) of job(%v)", t.TaskIndex, t.JobID)
+
+		}
+		job.taskQueue[task.TaskIndex] = task
 		r.tasks[TaskID(task)] = task
-
 		r.jobs.UpdateItem(job.JobID, job)
-	}
-}
-
-func (r *Registry) AddRunningService(task *Task) {
-	if task.Duration < 900000000 || task.Status != TASK_STATUS_RUNNING {
-		return
-	}
-	r.taskMutex.Lock()
-	defer r.taskMutex.Unlock()
-
-	r.runningService[TaskID(task)] = task
-}
-
-func (r *Registry) GetRunningService() []*Task {
-	r.taskMutex.RLock()
-	defer r.taskMutex.RUnlock()
-
-	var services []*Task
-	for _, t := range r.runningService {
-		services = append(services, t)
-	}
-
-	return services
-}
-
-func (r *Registry) RemoveRunningService(task *Task) {
-	if task.Duration < 900000000 || task.Status != TASK_STATUS_RUNNING {
-		return
-	}
-	r.taskMutex.Lock()
-	defer r.taskMutex.Unlock()
-
-	if _, ok := r.runningService[TaskID(task)]; ok {
-		delete(r.runningService, TaskID(task))
-	} else {
-		log.Errorf("Task not found when remove running service: job(%v) index(%v)", task.JobID, task.TaskIndex)
 	}
 }
 
@@ -278,6 +247,67 @@ func (r *Registry) RemoveMachine(machine *Machine) {
 	}
 }
 
+func (r *Registry) RunOnMachine(task *Task) {
+	r.machineMutex.Lock()
+	defer r.machineMutex.Unlock()
+
+	if m, ok := r.machines[task.MachineID]; ok {
+		m.UsedCpus += task.CpuRequest
+		m.UsedMem += task.MemoryRequest
+	}
+}
+
+func (r *Registry) CompleteOnMachine(task *Task) {
+	r.machineMutex.Lock()
+	defer r.machineMutex.Unlock()
+
+	if m, ok := r.machines[task.MachineID]; ok {
+		m.UsedCpus -= task.CpuRequest
+		m.UsedMem -= task.MemoryRequest
+	}
+}
+
+func (r *Registry) TotalResources() (float64, float64) {
+	r.machineMutex.RLock()
+	defer r.machineMutex.RUnlock()
+
+	totalCpus := 0.0
+	totalMem := 0.0
+	for _, machine := range r.machines {
+		totalCpus += machine.Cpus
+		totalMem += machine.Mem
+	}
+
+	return totalCpus, totalMem
+}
+
+func (r *Registry) TaskCanRunOnMachine(task *Task) (bool, *Machine) {
+	r.machineMutex.RLock()
+	defer r.machineMutex.RUnlock()
+
+	for _, machine := range r.machines {
+		if (machine.Cpus-machine.UsedCpus) > task.CpuRequest && (machine.Mem-machine.UsedMem) > task.MemoryRequest {
+			return true, machine
+		}
+	}
+
+	return false, nil
+}
+
+func (r *Registry) ResourceOffers() ([]*Machine) {
+	r.machineMutex.RLock()
+	defer r.machineMutex.RUnlock()
+
+	var offers []*Machine
+	for _, machine := range r.machines {
+		if machine.Cpus > machine.UsedCpus && machine.Mem > machine.UsedMem {
+			offers = append(offers, machine)
+		}
+	}
+
+	return offers
+}
+
 func (r *Registry) LenEvent() int {
 	return len(*r.events)
 }
@@ -302,4 +332,13 @@ func (r *Registry) TopEvent() *Event {
 
 	l := *r.events
 	return l[0]
+}
+
+func (r *Registry) AllDone() bool {
+	for _, task := range r.tasks {
+		if task.Status == TASK_STATUS_STAGING {
+			return false
+		}
+	}
+	return true
 }

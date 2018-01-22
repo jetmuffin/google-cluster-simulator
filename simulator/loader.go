@@ -3,16 +3,9 @@ package simulator
 import (
 	"os"
 	. "github.com/JetMuffin/google-cluster-simulator/common"
-	"github.com/JetMuffin/google-cluster-simulator/marshal"
 	"path"
-	"io/ioutil"
+	"encoding/csv"
 	"sort"
-)
-
-const (
-	SAMPLE_TASK_PATH = "tasks.csv"
-	SAMPLE_JOB_PATH = "jobs.csv"
-	SAMPLE_USAGE_PATH = "task_usage.csv"
 )
 
 type TraceLoader struct {
@@ -25,107 +18,122 @@ func NewLoader(directory string) *TraceLoader {
 	}
 }
 
-func (t *TraceLoader) LoadMarshalEvents() ([]*Event, int, error) {
-	var events []*Event
-	var jobNum int
+func (t *TraceLoader) LoadEvents() ([]*Event, int, int, int, error) {
+	var totalEvents []*Event
 
-	if jobEvents, err := t.LoadJobs(); err == nil {
-		events = append(events, jobEvents...)
-		jobNum = len(jobEvents)
-	} else {
-		return nil, 0, err
+	events, err := t.loadTaskEvents()
+	if err != nil {
+		return nil, 0, 0, 0, err
 	}
+	taskNum := len(events) - 1
+	totalEvents = append(totalEvents, events...)
 
-	if taskEvents, err := t.LoadTasks(); err == nil {
-		events = append(events, taskEvents...)
-	} else {
-		return nil, 0, err
+	events, err = t.loadJobEvents()
+	if err != nil {
+		return nil, 0, 0, 0, err
 	}
+	jobNum := len(events) - 1
+	totalEvents = append(totalEvents, events...)
 
-	return events, jobNum, nil
+	events, err = t.loadMachineEvents()
+	if err != nil {
+		return nil, 0, 0, 0, err
+	}
+	machineNum := len(events) - 1
+	totalEvents = append(totalEvents, events...)
+
+	return totalEvents, machineNum, jobNum, taskNum, nil
 }
 
-func (t *TraceLoader) LoadJobs() ([]*Event, error) {
-	f, err := os.Open(path.Join(t.directory, SAMPLE_JOB_PATH))
+func (t *TraceLoader) loadMachineEvents() ([]*Event, error) {
+	file, err := os.Open(path.Join(t.directory, "machines.csv"))
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
 
 	var events []*Event
-	jobs := []Job{}
-
-	c, err := ioutil.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-
-	err = marshal.Unmarshal([]byte(c), &jobs)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, j := range jobs {
-		events = append(events, &Event{
-			Time: j.SubmitTime,
-			EventOrigin: EVENT_JOB,
-			TaskEventType: TASK_SUBMIT,
-			Job: NewJob(j),
-		})
+	for _, record := range records {
+		event, err := ParseMachineEvent(record)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
 	}
 	return events, nil
 }
 
-func (t *TraceLoader) LoadTasks() ([]*Event, error) {
-	f, err := os.Open(path.Join(t.directory, SAMPLE_TASK_PATH))
+func (t *TraceLoader) loadJobEvents() ([]*Event, error) {
+	file, err := os.Open(path.Join(t.directory, "jobs.csv"))
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
 
 	var events []*Event
-	tasks := []Task{}
-
-	c, err := ioutil.ReadAll(f)
-	if err != nil {
-		return nil, err
+	for _, record := range records {
+		event, err := ParseJobEvent(record)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
 	}
-
-	err = marshal.Unmarshal([]byte(c), &tasks)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, t := range tasks {
-		events = append(events, &Event{
-			Time: t.SubmitTime,
-			EventOrigin: EVENT_TASK,
-			TaskEventType: TASK_SUBMIT,
-			Task: NewTask(t),
-		})
-	}
-
 	return events, nil
 }
 
-func (t *TraceLoader) LoadUsage() (map[int64] []*TaskUsage, error) {
-	f, err := os.Open(path.Join(t.directory, SAMPLE_USAGE_PATH))
+func (t *TraceLoader) loadTaskEvents() ([]*Event, error) {
+	file, err := os.Open(path.Join(t.directory, "tasks.csv"))
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer file.Close()
 
-	m := make(map[int64] []*TaskUsage)
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+
+	var events []*Event
+	for _, record := range records {
+		event, err := ParseTaskEvent(record)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, nil
+}
+
+func (t *TraceLoader) LoadUsages() (map[int64][]*TaskUsage, error) {
+	file, err := os.Open(path.Join(t.directory, "usages.csv"))
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+
+	m := make(map[int64][]*TaskUsage)
 	usages := []TaskUsage{}
-
-	c, err := ioutil.ReadAll(f)
-	if err != nil {
-		return nil, err
-	}
-
-	err = marshal.Unmarshal([]byte(c), &usages)
-	if err != nil {
-		return nil, err
+	for _, record := range records {
+		usages = append(usages, ParseTaskUsage(record))
 	}
 
 	sort.Sort(UsageSort(usages))

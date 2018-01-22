@@ -49,35 +49,32 @@ func (d *DRFScheduler) ScheduleTask(task *Task) {
 	task.Status = TASK_STATUS_RUNNING
 	task.StartTime = *d.timeticker
 	d.registry.UpdateTask(task)
-
-	d.registry.AddRunningService(task)
 }
 
 func (d *DRFScheduler) CompleteTask(task *Task) {
-	d.registry.RemoveRunningService(task)
-
 	task.Status = TASK_STATUS_FINISHED
 	task.EndTime = *d.timeticker
 	job := d.registry.GetJob(task.JobID)
 	if job != nil {
-		d.registry.UpdateJob(job, task, d.totalCpu, d.totalMem, false)
+		d.registry.UpdateJob(job, task, false)
 		d.registry.UpdateTask(task)
 
 		if !task.Oversubscribe {
-			d.totalCpu += task.CpuRequest
-			d.totalMem += task.MemoryRequest
+			d.registry.CompleteOnMachine(task)
 		}
 
-		if job.Done() {
-			d.CompleteJob(job)
-			log.Infof("[%v] Job %v done(%v/%v)", *d.timeticker/1000/1000, job.JobID, d.jobDone, d.jobNum)
-		}
+		//if job.Done() {
+		//	d.CompleteJob(job)
+		//	log.Infof("[%v] Job %v done(%v/%v)", *d.timeticker/1000/1000, job.JobID, d.jobDone, d.jobNum)
+		//}
 	}
 
 	d.registry.RemoveTask(task)
 }
 
-func (d *DRFScheduler) runTask(job *Job, task *Task) {
+func (d *DRFScheduler) runTask(job *Job, task *Task, machineID int64) {
+	task.MachineID = machineID
+	task.Status = TASK_STATUS_RUNNING
 	d.registry.PushEvent(&Event{
 		EventOrigin:   EVENT_TASK,
 		Task:          task,
@@ -94,12 +91,10 @@ func (d *DRFScheduler) runTask(job *Job, task *Task) {
 	})
 	log.Debugf("[%v] Task(%v) of job(%v) will finished at %v", *d.timeticker/1000/1000, task.TaskIndex, task.JobID, *d.timeticker+task.Duration)
 
-	d.registry.UpdateJob(job, task, d.totalCpu, d.totalMem, true)
-	d.registry.RunTaskOfJob(job, *d.timeticker)
+	d.registry.UpdateJob(job, task, true)
 
 	if !task.Oversubscribe {
-		d.totalCpu -= task.CpuRequest
-		d.totalMem -= task.MemoryRequest
+		d.registry.RunOnMachine(task)
 	}
 }
 
@@ -120,18 +115,42 @@ func (d *DRFScheduler) Schedule() {
 }
 
 func (d *DRFScheduler) ScheduleOnce() {
+	d.registry.CountJainsFairIndex(*d.timeticker)
+
 	job := d.registry.NextScheduleJob()
 	if job != nil {
 		if d.registry.TaskLenOfJob(job) > 0 {
-			task := d.registry.GetFirstTaskOfJob(job)
+			stagingTasks := d.registry.WaitingTasks(job)
 
-			if task != nil && task.CpuRequest < d.totalCpu && task.MemoryRequest < d.totalMem {
-				d.runTask(job, task)
-				d.registry.CountJainsFairIndex()
-				log.Debugf("[%v] %v tasks of Job %v run, resource available(%v %v)", *d.timeticker/1000/1000, task.TaskIndex, job.JobID, d.totalCpu, d.totalMem)
+			if len(stagingTasks) > 0 {
+				offers := d.registry.ResourceOffers()
+				log.Debugf("Send %v offers to job %v", len(offers), job.JobID)
+				result := make(map[int64][]*Task)
 
-			} else {
-				log.Debugf("No enough resource for task(%v) job(%v), request(%v %v), available(%v %v)", task.TaskIndex, task.JobID, task.CpuRequest, task.MemoryRequest, d.totalCpu, d.totalMem)
+				for _, machine := range offers {
+					mCpus := machine.Cpus - machine.UsedCpus
+					mMem := machine.Mem - machine.UsedCpus
+
+					for _, task := range stagingTasks {
+						if task.CpuRequest < mCpus && task.MemoryRequest < mMem {
+							result[machine.MachineID] = append(result[machine.MachineID], task)
+							mCpus -= task.CpuRequest
+							mMem -= task.MemoryRequest
+							delete(stagingTasks, task.TaskIndex)
+						}
+					}
+				}
+
+				if len(result) > 0 {
+					for machineID, taskList := range result {
+						for _, task := range taskList {
+							d.runTask(job, task, machineID)
+							log.Debugf("[%v] Task(%v) of Job %v run on machine %v", *d.timeticker/1000/1000, task.TaskIndex, job.JobID, task.MachineID)
+						}
+					}
+				} else {
+					log.Debugf("No enough resource for job(%v)", job.JobID)
+				}
 			}
 		}
 	}

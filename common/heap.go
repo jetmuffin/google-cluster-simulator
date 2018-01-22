@@ -21,10 +21,10 @@ func (h JobHeap) Len() int {
 
 func (h JobHeap) Less(i, j int) bool {
 	if h[i].Share == h[j].Share {
-		if h[i].taskQueue.Len() == h[j].taskQueue.Len() {
+		if len(h[i].taskQueue) == len(h[j].taskQueue) {
 			return h[i].SubmitTime < h[j].SubmitTime
 		}
-		return h[i].taskQueue.Len() > h[j].taskQueue.Len()
+		return len(h[i].taskQueue) > len(h[j].taskQueue)
 	}
 	return h[i].Share < h[j].Share
 }
@@ -100,7 +100,7 @@ func (h *JobSyncHeap) Debug() {
 	defer h.lock.RUnlock()
 
 	for _, v := range *h.heap {
-		log.Debugf("%v %v %v [%v]",v.JobID, v.Share, v.taskQueue.Len(), v.SubmitTime/1000/1000)
+		log.Debugf("%v %v %v [%v]",v.JobID, v.Share, len(v.taskQueue), v.SubmitTime/1000/1000)
 	}
 
 	log.Debug()

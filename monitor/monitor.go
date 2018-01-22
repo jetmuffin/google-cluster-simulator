@@ -85,8 +85,8 @@ func (m *Monitor) RunOnce() (float64, float64) {
 	slackCpu := 0.0
 	slackMem := 0.0
 
-	//for _, task := range m.registry.FilterTask(func(task *Task) bool { return task.Status == TASK_STATUS_RUNNING}) {
-	for _, task := range m.registry.GetRunningService() {
+	for _, task := range m.registry.FilterTask(func(task *Task) bool { return task.Status == TASK_STATUS_RUNNING}) {
+	//for _, task := range m.registry.GetRunningService() {
 		if m.SlackResource(task) {
 			log.Debugf("Slack resource for task(%v) job(%v): cpu(%v/%v) mem(%v/%v)", task.TaskIndex, task.JobID, task.CpuSlack, task.CpuRequest, task.MemSlack, task.MemoryRequest)
 		}

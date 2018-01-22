@@ -15,10 +15,10 @@ func (s JobShareSort) Less(i, j int) bool {
 		return true
 	}
 	if s[i].Share == s[j].Share {
-		if s[i].taskQueue.Len() == s[j].taskQueue.Len() {
+		if len(s[i].taskQueue) == len(s[j].taskQueue) {
 			return s[i].SubmitTime < s[j].SubmitTime
 		}
-		return s[i].taskQueue.Len() > s[j].taskQueue.Len()
+		return len(s[i].taskQueue) > len(s[j].taskQueue)
 	}
 	return s[i].Share < s[j].Share
 }

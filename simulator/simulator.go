@@ -5,9 +5,9 @@ import (
 	. "github.com/JetMuffin/google-cluster-simulator/common"
 	. "github.com/JetMuffin/google-cluster-simulator/monitor"
 	log "github.com/Sirupsen/logrus"
-	"errors"
 	"os"
 	"github.com/JetMuffin/google-cluster-simulator/util"
+	"errors"
 )
 
 type Simulator struct {
@@ -17,7 +17,9 @@ type Simulator struct {
 	registry  *Registry
 	config    Config
 
-	jobNum int
+	jobNum     int
+	taskNum    int
+	machineNum int
 
 	timeticker *int64
 	signal     chan int
@@ -31,16 +33,22 @@ func NewSimulator(config Config) (*Simulator, error) {
 		config:     config,
 	}
 
-	events, jobNum, err := s.loader.LoadMarshalEvents()
-	usage, err := s.loader.LoadUsage()
+	events, machineNum, jobNum, taskNum, err := s.loader.LoadEvents()
+	s.taskNum = taskNum
+	s.machineNum = machineNum
+	s.jobNum = jobNum
+
+	usage, err := s.loader.LoadUsages()
 	if err != nil {
 		return nil, err
 	}
 
+	log.Infof("Load %v events from %v", len(events), config.Directory)
+
 	eventHeap := NewEventHeap(events)
 	s.registry = NewRegistry(&eventHeap)
+
 	s.monitor = NewMonitor(usage, s.registry, NewMonitorParam(config.Alpha, config.Beta, config.Theta, config.Lambda, config.Gamma), s.timeticker)
-	s.jobNum = jobNum
 
 	switch SchedulerType(config.Scheduler) {
 	case SCHEDULER_DRF:
@@ -56,18 +64,34 @@ func NewSimulator(config Config) (*Simulator, error) {
 	return s, nil
 }
 
+func (s *Simulator) HandleMachineEvent(event *Event) {
+	machine := event.Machine
+
+	switch event.MachineEventType {
+	case MACHINE_ADD:
+		//log.Debugf("[%v] Add a new machine %v with cpu(%v) mem(%v)", event.Time/1000/1000, machine.MachineID, machine.Cpus, machine.Mem)
+		s.registry.AddMachine(machine)
+	case MACHINE_REMOVE:
+		//log.Debugf("[%v] Remove a machine %v with cpu(%v) mem(%v)", event.Time/1000/1000, machine.MachineID, machine.Cpus, machine.Mem)
+		s.registry.RemoveMachine(machine)
+	case MACHINE_UPDATE:
+		//log.Debugf("[%v] Update a machine %v with cpu(%v) mem(%v)", event.Time/1000/1000, machine.MachineID, machine.Cpus, machine.Mem)
+		s.registry.UpdateMachine(machine)
+	}
+}
+
 func (s *Simulator) HandleJobEvent(event *Event) {
 	job := event.Job
 
 	switch event.TaskEventType {
 	case TASK_SUBMIT:
-		log.Debugf("[%v] Submit new job(%v) with %v tasks", event.Time/1000/1000, event.Job.JobID, event.Job.TaskNum)
+		log.Debugf("[%v] Submit new job(%v)", event.Time/1000/1000, job.JobID)
 		s.scheduler.SubmitJob(job)
 	case TASK_FINISH:
-		log.Debugf("[%v] Job(%v) done %v", event.Time/1000/1000, event.Job.JobID, s.scheduler.Progress())
+		log.Debugf("[%v] Job(%v) done %v", event.Time/1000/1000, job.JobID, s.scheduler.Progress())
 		s.scheduler.CompleteJob(job)
 	default:
-		log.Error("Unknown event type")
+		log.Errorf("Unknown job event type %v", event.TaskEventType)
 	}
 	s.scheduler.ScheduleOnce()
 }
@@ -85,7 +109,7 @@ func (s *Simulator) HandleTaskEvent(event *Event) {
 		log.Debugf("[%v] Task(%v) of job(%v) is finished", event.Time/1000/1000, task.TaskIndex, task.JobID)
 		s.scheduler.CompleteTask(task)
 	default:
-		log.Error("Unknown event type")
+		log.Errorf("Unknown task event type: %v", event.TaskEventType)
 	}
 	s.scheduler.ScheduleOnce()
 }
@@ -100,23 +124,34 @@ func (s *Simulator) statistic() {
 		util.Post(
 			url,
 			util.PostParam{
-				Cpu: s.config.Cpu,
-				Mem: s.config.Mem,
+				Cpu:                s.config.Cpu,
+				Mem:                s.config.Mem,
 				AverageWaitingTime: averageWaitingTime,
 				AverageRunningTime: averageRunningTime,
-				AllDoneTime: float64(allDoneTime),
-				Scheduler: int64(s.config.Scheduler),
-				JainsFairIndex: s.registry.GetJainsFairIndex(),
+				AllDoneTime:        float64(allDoneTime),
+				Scheduler:          int64(s.config.Scheduler),
+				JainsFairIndex:     s.registry.GetJainsFairIndex(*s.timeticker),
 			},
 		)
 	}
-	log.Infof("Average running time: %v, average waiting time: %v, all job finished time: %v", averageRunningTime, averageWaitingTime, allDoneTime)
-	log.Infof("Jain's fair index: avg(%v), max(%v) min(%v)", s.registry.GetJainsFairIndex(),    s.registry.MaxIndex, s.registry.MinIndex)
+
+	log.Info("=========================================")
+	if SchedulerType(s.config.Scheduler) == SCHEDULER_DRF {
+		log.Info("Scheduler: DRF")
+	} else {
+		log.Info("Scheduler: Datom")
+	}
+	log.Infof("Job number: %v", s.jobNum)
+	log.Infof("Task number: %v", s.taskNum)
+	log.Infof("Machine number: %v", s.machineNum)
+	log.Infof("All job finished time: %v", allDoneTime)
+	log.Infof("Jain's fair index: avg(%v), max(%v) min(%v)", s.registry.GetJainsFairIndex(*s.timeticker), s.registry.MaxIndex, s.registry.MinIndex)
+	log.Info("=========================================")
+
 }
 
 func (s *Simulator) Run() {
-	for !s.scheduler.Done() {
-		if s.registry.LenEvent() > 0 {
+		for s.registry.LenEvent() > 0 || !s.registry.AllDone() {
 			event := s.registry.PopEvent()
 			if event.Time > *s.timeticker {
 				*s.timeticker = event.Time + TIME_DELAY
@@ -131,9 +166,11 @@ func (s *Simulator) Run() {
 			case EVENT_JOB:
 				s.HandleJobEvent(event)
 				break
+			case EVENT_MACHINE:
+				s.HandleMachineEvent(event)
+				break
 			}
 		}
-	}
 
 	log.Debug("Done")
 
