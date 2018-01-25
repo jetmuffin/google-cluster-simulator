@@ -1,16 +1,22 @@
 package common
 
+import "fmt"
+
 const (
 	TIME_DELAY = 0
 )
 
 type Machine struct {
-	MachineID  int64
-	PlatformID string
-	Cpus       float64
-	Mem        float64
-	UsedCpus   float64
-	UsedMem    float64
+	MachineID              int64
+	PlatformID             string
+	Cpus                   float64
+	Mem                    float64
+	OversubscribedCpus     float64
+	OversubscribedMem      float64
+	UsedCpus               float64
+	UsedMem                float64
+	UsedOversubscribedCpus float64
+	UsedOversubscribedMem  float64
 }
 
 type Job struct {
@@ -104,8 +110,8 @@ func TaskID(task *Task) int64 {
 	return task.JobID*1333 + task.TaskIndex
 }
 
-func GetTaskID(jobId, taskIndex int64) int64 {
-	return jobId*1333 + taskIndex
+func GetTaskID(jobID, taskIndex int64) string {
+	return fmt.Sprintf("%d_%d", jobID, taskIndex)
 }
 
 type MachineEventType int
@@ -213,7 +219,7 @@ func ParseJobEvent(record []string) (*Event, error) {
 		SchedulingClass: stringToInt64(record[6], 0),
 		JobName:         record[7],
 		LogicalJobName:  record[8],
-		TaskNum:         stringToInt64(record[9],0),
+		TaskNum:         stringToInt64(record[9], 0),
 	}
 
 	return &Event{
@@ -260,11 +266,11 @@ func NewTaskUsage(t TaskUsage) *TaskUsage {
 
 func ParseTaskUsage(record []string) TaskUsage {
 	return TaskUsage{
-		StartTime:   stringToInt64(record[4], 0),
-		EndTime:     stringToInt64(record[5], 0),
-		JobID:       stringToInt64(record[0], 0),
-		TaskIndex:   stringToInt64(record[1], 0),
-		CpuUsage:    stringToFloat64(record[2], 0.0),
-		MemoryUsage: stringToFloat64(record[3], 0.0),
+		StartTime:   stringToInt64(record[1], 0),
+		EndTime:     stringToInt64(record[2], 0),
+		JobID:       stringToInt64(record[3], 0),
+		TaskIndex:   stringToInt64(record[4], 0),
+		CpuUsage:    stringToFloat64(record[6], 0.0),
+		MemoryUsage: stringToFloat64(record[7], 0.0),
 	}
 }

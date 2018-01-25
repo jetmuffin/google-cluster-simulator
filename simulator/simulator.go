@@ -5,8 +5,6 @@ import (
 	. "github.com/JetMuffin/google-cluster-simulator/common"
 	. "github.com/JetMuffin/google-cluster-simulator/monitor"
 	log "github.com/Sirupsen/logrus"
-	"os"
-	"github.com/JetMuffin/google-cluster-simulator/util"
 	"errors"
 )
 
@@ -52,10 +50,10 @@ func NewSimulator(config Config) (*Simulator, error) {
 
 	switch SchedulerType(config.Scheduler) {
 	case SCHEDULER_DRF:
-		s.scheduler = NewDRFScheduler(s.registry, s.timeticker, s.signal, jobNum, config.Cpu, config.Mem)
+		s.scheduler = NewDRFScheduler(s.registry, s.timeticker, s.signal, jobNum, taskNum, config.Cpu, config.Mem)
 		break
 	case SCHEDULER_DATOM:
-		s.scheduler = NewDRFOScheduler(s.monitor, s.registry, s.timeticker, s.signal, jobNum, config.Cpu, config.Mem)
+		s.scheduler = NewDRFOScheduler(s.monitor, s.registry, s.timeticker, s.signal, jobNum, taskNum, config.Cpu, config.Mem)
 		break
 	default:
 		return nil, errors.New("Unknown scheduler type")
@@ -78,6 +76,9 @@ func (s *Simulator) HandleMachineEvent(event *Event) {
 		//log.Debugf("[%v] Update a machine %v with cpu(%v) mem(%v)", event.Time/1000/1000, machine.MachineID, machine.Cpus, machine.Mem)
 		s.registry.UpdateMachine(machine)
 	}
+	if event.Time > 0 {
+		s.scheduler.Schedule()
+	}
 }
 
 func (s *Simulator) HandleJobEvent(event *Event) {
@@ -93,7 +94,7 @@ func (s *Simulator) HandleJobEvent(event *Event) {
 	default:
 		log.Errorf("Unknown job event type %v", event.TaskEventType)
 	}
-	s.scheduler.ScheduleOnce()
+	s.scheduler.Schedule()
 }
 
 func (s *Simulator) HandleTaskEvent(event *Event) {
@@ -111,47 +112,27 @@ func (s *Simulator) HandleTaskEvent(event *Event) {
 	default:
 		log.Errorf("Unknown task event type: %v", event.TaskEventType)
 	}
-	s.scheduler.ScheduleOnce()
+	s.scheduler.Schedule()
 }
 
-func (s *Simulator) statistic() {
-	averageWaitingTime := float64(s.registry.TotalWaitingTime) / 1000.0 / 1000.0 / float64(s.jobNum)
-	averageRunningTime := float64(s.registry.TotalRunningTime) / 1000.0 / 1000.0 / float64(s.jobNum)
+func (s *Simulator) statistic() *Statistics{
 	allDoneTime := *s.timeticker / 1000 / 1000
 
-	if s.config.Post {
-		url := os.Getenv("DATOM_FLASK_ENDPOINT")
-		util.Post(
-			url,
-			util.PostParam{
-				Cpu:                s.config.Cpu,
-				Mem:                s.config.Mem,
-				AverageWaitingTime: averageWaitingTime,
-				AverageRunningTime: averageRunningTime,
-				AllDoneTime:        float64(allDoneTime),
-				Scheduler:          int64(s.config.Scheduler),
-				JainsFairIndex:     s.registry.GetJainsFairIndex(*s.timeticker),
-			},
-		)
+	return &Statistics{
+		TaskNum: int64(s.taskNum),
+		JobNum: int64(s.jobNum),
+		MachineNum: int64(s.machineNum),
+		JobFinishTime: float64(allDoneTime),
+		FairIndex: s.registry.GetJainsFairIndex(*s.timeticker),
+		Overhead: s.registry.AverageTimeCost(),
+		Throughput: s.registry.GetThroughput(*s.timeticker),
+		Makespan: s.registry.GetMakespan(),
 	}
-
-	log.Info("=========================================")
-	if SchedulerType(s.config.Scheduler) == SCHEDULER_DRF {
-		log.Info("Scheduler: DRF")
-	} else {
-		log.Info("Scheduler: Datom")
-	}
-	log.Infof("Job number: %v", s.jobNum)
-	log.Infof("Task number: %v", s.taskNum)
-	log.Infof("Machine number: %v", s.machineNum)
-	log.Infof("All job finished time: %v", allDoneTime)
-	log.Infof("Jain's fair index: avg(%v), max(%v) min(%v)", s.registry.GetJainsFairIndex(*s.timeticker), s.registry.MaxIndex, s.registry.MinIndex)
-	log.Info("=========================================")
-
 }
 
-func (s *Simulator) Run() {
-		for s.registry.LenEvent() > 0 || !s.registry.AllDone() {
+func (s *Simulator) Run() *Statistics {
+	for !s.scheduler.Done() {
+		if s.registry.LenEvent() > 0 {
 			event := s.registry.PopEvent()
 			if event.Time > *s.timeticker {
 				*s.timeticker = event.Time + TIME_DELAY
@@ -171,8 +152,7 @@ func (s *Simulator) Run() {
 				break
 			}
 		}
-
+	}
 	log.Debug("Done")
-
-	s.statistic()
+	return s.statistic()
 }

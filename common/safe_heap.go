@@ -104,9 +104,9 @@ func (pq *PriorityQueue) Init(maxSize int) {
 }
 
 func (pq PriorityQueue) Len() int {
-	pq.mutex.RLock()
+	//pq.mutex.RLock()
 	size := pq.slice.Len()
-	pq.mutex.RUnlock()
+	//pq.mutex.RUnlock()
 	return size
 }
 
@@ -119,20 +119,20 @@ func (pq *PriorityQueue) minItem() *Job {
 }
 
 func (pq *PriorityQueue) MinItem() *Job {
-	pq.mutex.RLock()
-	defer pq.mutex.RUnlock()
+	//pq.mutex.RLock()
+	//defer pq.mutex.RUnlock()
 	return pq.minItem()
 }
 
 func (pq *PriorityQueue) PopItem() *Job {
-	pq.mutex.Lock()
-	defer pq.mutex.Unlock()
+	//pq.mutex.Lock()
+	//defer pq.mutex.Unlock()
 	return heap.Pop(&(pq.slice)).(*Job)
 }
 
 func (pq *PriorityQueue) PushItem(key interface{}, value *Job) (bPushed bool) {
-	pq.mutex.Lock()
-	defer pq.mutex.Unlock()
+	//pq.mutex.Lock()
+	//defer pq.mutex.Unlock()
 	size := pq.slice.Len()
 	item := pq.slice.itemByKey(key)
 	if size > 0 && item != nil {
@@ -153,22 +153,22 @@ func (pq *PriorityQueue) PushItem(key interface{}, value *Job) (bPushed bool) {
 }
 
 func (pq *PriorityQueue) GetItem(key interface{}) *Job {
-	pq.mutex.Lock()
-	defer pq.mutex.Unlock()
+	//pq.mutex.Lock()
+	//defer pq.mutex.Unlock()
 
 	return pq.slice.itemByKey(key)
 }
 
 func (pq *PriorityQueue) UpdateItem(key interface{}, value *Job) {
-	pq.mutex.Lock()
-	defer pq.mutex.Unlock()
+	//pq.mutex.Lock()
+	//defer pq.mutex.Unlock()
 
 	pq.slice.update(key, value)
 }
 
 func (pq *PriorityQueue) RemoveItem(key interface{}) {
-	pq.mutex.Lock()
-	defer pq.mutex.Unlock()
+	//pq.mutex.Lock()
+	//defer pq.mutex.Unlock()
 
 	size := pq.slice.Len()
 	item := pq.slice.itemByKey(key)
@@ -184,10 +184,10 @@ func (pq PriorityQueue) GetItems() []*Job {
 	}
 
 	s := make([]*Job, sz)
-	pq.mutex.RLock()
+	//pq.mutex.RLock()
 	for i := 0; i < sz; i++ {
 		s[i] = pq.slice.items[i]
 	}
-	pq.mutex.RUnlock()
+	//pq.mutex.RUnlock()
 	return s
 }

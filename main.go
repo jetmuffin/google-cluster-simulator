@@ -7,10 +7,12 @@ import (
 	log "github.com/Sirupsen/logrus"
 	. "github.com/JetMuffin/google-cluster-simulator/common"
 	"github.com/JetMuffin/google-cluster-simulator/simulator"
+	"runtime"
 )
 
 var (
 	config Config
+	cores int
 )
 
 func usage() {
@@ -29,8 +31,10 @@ func main() {
 	flag.Float64Var(&config.Alpha, "alpha", 0.5, "single exponential influence")
 	flag.Float64Var(&config.Beta, "beta", 0.3, "double exponential influence")
 	flag.Float64Var(&config.Theta, "theta", 1.2, "punish parameter")
-	flag.Float64Var(&config.Lambda, "lambda", 1.2, "threshold parameter")
+	flag.Float64Var(&config.Lambda, "lambda", 1.0, "threshold parameter")
 	flag.Float64Var(&config.Gamma, "gamma", 0.1, "predictor error feedback")
+	flag.IntVar(&config.Iteration, "iter", 1, "Iteration")
+	flag.IntVar(&cores, "cores", 1, "Number of cores")
 
 	flag.Usage = usage
 	flag.Parse()
@@ -42,10 +46,28 @@ func main() {
 		log.SetLevel(log.DebugLevel)
 	}
 
-	s, err := simulator.NewSimulator(config)
-	if err != nil {
-		log.Errorf("Cannot create simulator: %v", err)
+	if cores > 1 {
+		runtime.GOMAXPROCS(cores)
 	}
 
-	s.Run()
+	var stats []*Statistics
+	for i := 1; i <= config.Iteration; i++ {
+		log.Infof("Iteration %v:", i)
+
+		s, err := simulator.NewSimulator(config)
+		if err != nil {
+			log.Errorf("Cannot create simulator: %v", err)
+		}
+
+		stats = append(stats, s.Run())
+	}
+
+	log.Info("=========================================")
+	if (config.Scheduler) == 0 {
+		log.Info("Scheduler: DRF")
+	} else {
+		log.Info("Scheduler: Datom")
+	}
+	Report(stats)
+	log.Info("=========================================")
 }

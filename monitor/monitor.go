@@ -2,7 +2,6 @@ package monitor
 
 import (
 	. "github.com/JetMuffin/google-cluster-simulator/common"
-	log "github.com/Sirupsen/logrus"
 )
 
 const (
@@ -10,10 +9,10 @@ const (
 )
 
 type Monitor struct {
-	Usages map[int64][]*TaskUsage
+	Usages map[string][]*TaskUsage
 
-	cpuSlack map[int64][]float64
-	memSlack map[int64][]float64
+	cpuSlack map[string][]float64
+	memSlack map[string][]float64
 	params   MonitorParam
 
 	timeticker *int64
@@ -50,66 +49,58 @@ func NewMonitorParam(alpha, beta, theta, lambda, gamma float64) MonitorParam {
 	}
 }
 
-func NewMonitor(usages map[int64][]*TaskUsage, registry *Registry, params MonitorParam, timeticker *int64) *Monitor {
+func NewMonitor(usages map[string][]*TaskUsage, registry *Registry, params MonitorParam, timeticker *int64) *Monitor {
 	monitor := &Monitor{
 		Usages:     usages,
-		cpuSlack:   make(map[int64][]float64),
-		memSlack:   make(map[int64][]float64),
+		cpuSlack:   make(map[string][]float64),
+		memSlack:   make(map[string][]float64),
 		interval:   MONITOR_INTERVAL,
 		timeticker: timeticker,
 		registry:   registry,
 	}
 
-	for taskId, taskUsages := range usages {
-		var cpuUsage []float64
-		var memUsage []float64
-		for _, u := range taskUsages {
-			cpuUsage = append(cpuUsage, u.CpuUsage)
-			memUsage = append(memUsage, u.MemoryUsage)
-		}
-		monitor.cpuSlack[taskId] = Threshold(cpuUsage, params)
-		monitor.memSlack[taskId] = Threshold(memUsage, params)
-	}
+	//for taskId, taskUsages := range usages {
+	//	var cpuUsage []float64
+	//	var memUsage []float64
+	//	for _, u := range taskUsages {
+	//		cpuUsage = append(cpuUsage, u.CpuUsage)
+	//		memUsage = append(memUsage, u.MemoryUsage)
+	//	}
+	//	monitor.cpuSlack[taskId] = Threshold(cpuUsage, params)
+	//	monitor.memSlack[taskId] = Threshold(memUsage, params)
+	//}
 	return monitor
 }
 
-func (m *Monitor) RunForever() {
-	go func() {
-		for {
-			m.RunOnce()
-		}
-	}()
-}
+func (m *Monitor) ResourceOffers() []*Machine {
+	mResources := make(map[int64][]float64)
 
-func (m *Monitor) RunOnce() (float64, float64) {
-	slackCpu := 0.0
-	slackMem := 0.0
-
-	for _, task := range m.registry.FilterTask(func(task *Task) bool { return task.Status == TASK_STATUS_RUNNING}) {
-	//for _, task := range m.registry.GetRunningService() {
+	for _, task := range m.registry.FilterTask(func(task *Task) bool { return task.Status == TASK_STATUS_RUNNING }) {
+		//m.SlackResource(task)
 		if m.SlackResource(task) {
-			log.Debugf("Slack resource for task(%v) job(%v): cpu(%v/%v) mem(%v/%v)", task.TaskIndex, task.JobID, task.CpuSlack, task.CpuRequest, task.MemSlack, task.MemoryRequest)
-		}
-		if task.CpuSlack > 0 {
-			slackCpu += task.CpuSlack
-		}
-		if task.MemSlack > 0 {
-			slackMem += task.MemSlack
+			if _, ok := mResources[task.MachineID]; !ok {
+				mResources[task.MachineID] = []float64{0.0, 0.0}
+			}
+			//log.Infof("Slack resource for task(%v) job(%v): cpu(%v/%v) mem(%v/%v)", task.TaskIndex, task.JobID, task.CpuSlack, task.CpuRequest, task.MemSlack, task.MemoryRequest)
+			mResources[task.MachineID][0] += task.CpuSlack
+			mResources[task.MachineID][1] += task.MemSlack
+		} else {
 		}
 	}
+	//log.Info(mResources)
 
-	return slackCpu, slackMem
+	return m.registry.OversubscribedResourceOffers(mResources)
 }
 
 func (m *Monitor) SlackResource(task *Task) bool {
 	windowNum := ( *m.timeticker - task.StartTime) / m.interval
-	taskId := TaskID(task)
-	if windowNum == 0 || len(m.cpuSlack[taskId]) == 0 || len(m.memSlack[taskId]) == 0 || int(windowNum) > len(m.cpuSlack[taskId]) || int(windowNum) > len(m.memSlack[taskId]) {
+
+	taskId := GetTaskID(task.JobID, task.TaskIndex)
+	if len(m.Usages[taskId]) == 0 || int(windowNum) > len(m.Usages[taskId]) || task.StartTime == 0 {
 		return false
 	}
-
-	task.CpuSlack = task.CpuRequest - m.cpuSlack[taskId][windowNum-1]
-	task.MemSlack = task.MemoryRequest - m.memSlack[taskId][windowNum-1]
+	task.CpuSlack = task.CpuRequest - m.Usages[taskId][windowNum].CpuUsage
+	task.MemSlack = task.MemoryRequest - m.Usages[taskId][windowNum].MemoryUsage
 	m.registry.UpdateTask(task)
 
 	if task.CpuSlack < 0 || task.MemSlack < 0 {

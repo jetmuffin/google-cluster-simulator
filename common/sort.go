@@ -36,3 +36,17 @@ func (u UsageSort) Swap(i, j int) {
 func (u UsageSort) Less(i, j int) bool {
 	return u[i].StartTime < u[j].StartTime
 }
+
+type TaskSort []*Task
+
+func (t TaskSort) Len() int {
+	return len(t)
+}
+
+func (t TaskSort) Swap(i, j int) {
+	t[i], t[j] = t[j], t[i]
+}
+
+func (t TaskSort) Less(i, j int) bool {
+	return t[i].SubmitTime < t[j].SubmitTime
+}

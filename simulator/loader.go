@@ -117,7 +117,7 @@ func (t *TraceLoader) loadTaskEvents() ([]*Event, error) {
 	return events, nil
 }
 
-func (t *TraceLoader) LoadUsages() (map[int64][]*TaskUsage, error) {
+func (t *TraceLoader) LoadUsages() (map[string][]*TaskUsage, error) {
 	file, err := os.Open(path.Join(t.directory, "usages.csv"))
 	if err != nil {
 		return nil, err
@@ -130,7 +130,7 @@ func (t *TraceLoader) LoadUsages() (map[int64][]*TaskUsage, error) {
 		return nil, err
 	}
 
-	m := make(map[int64][]*TaskUsage)
+	m := make(map[string][]*TaskUsage)
 	usages := []TaskUsage{}
 	for _, record := range records {
 		usages = append(usages, ParseTaskUsage(record))

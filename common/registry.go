@@ -5,6 +5,8 @@ import (
 	log "github.com/Sirupsen/logrus"
 	"math"
 	"container/heap"
+	"time"
+	"sort"
 )
 
 type Registry struct {
@@ -22,12 +24,19 @@ type Registry struct {
 	events      *EventHeap
 	eventsMutex sync.RWMutex
 
-	totalIndex    float64
-	countIndex    int
-	lastIndexTime int64
+	totalIndex        float64
+	countIndex        int
+	lastIndexTime     int64
+	totalRunningCount int64
 
 	MaxIndex float64
 	MinIndex float64
+
+	totalTimeCost float64
+	countTimeCost float64
+
+	totalMakespan float64
+	taskCount     int64
 }
 
 func NewRegistry(events *EventHeap) *Registry {
@@ -48,6 +57,9 @@ func NewRegistry(events *EventHeap) *Registry {
 		MinIndex:      1,
 		lastIndexTime: 0,
 		totalIndex:    0.0,
+
+		totalTimeCost: 0.0,
+		countTimeCost: 0.0,
 	}
 }
 
@@ -60,7 +72,6 @@ func (r *Registry) CountJainsFairIndex(time int64) float64 {
 	totalSquareMem := 0.0
 
 	for _, job := range jobs {
-
 		if job.CpuUsed > 0 || job.MemUsed > 0 {
 			//log.Info(job.JobID, job.CpuUsed, job.MemUsed)
 			count++
@@ -79,10 +90,26 @@ func (r *Registry) CountJainsFairIndex(time int64) float64 {
 		index = 1
 	}
 
-	log.Debug(index)
 	r.totalIndex += float64(time-r.lastIndexTime) * index
+
+	runningCount := 0
+	for _, task := range r.tasks {
+		if task.Status == TASK_STATUS_RUNNING {
+			runningCount ++
+		}
+	}
+	r.totalRunningCount += (time - r.lastIndexTime) * int64(runningCount)
+
 	r.lastIndexTime = time
+
 	return index
+}
+
+func (r *Registry) GetThroughput(duration int64) float64 {
+	if duration == 0 {
+		return 0
+	}
+	return float64(r.totalRunningCount) / float64(duration)
 }
 
 func (r *Registry) GetJainsFairIndex(duration int64) float64 {
@@ -137,14 +164,18 @@ func (r *Registry) UpdateJob(job *Job, task *Task, add bool) {
 	r.jobs.UpdateItem(job.JobID, job)
 }
 
-func (r *Registry) WaitingTasks(job *Job) map[int64]*Task {
-	result := make(map[int64]*Task)
+func (r *Registry) WaitingTasks(job *Job) []*Task {
+	r.taskMutex.RLock()
+	defer r.taskMutex.RUnlock()
+	var result []*Task
 	for _, task := range job.taskQueue {
 		if task.Status == TASK_STATUS_STAGING {
-			result[task.TaskIndex] = task
+			result = append(result, task)
 		}
 	}
-	return result
+	srt := TaskSort(result)
+	sort.Sort(srt)
+	return srt
 }
 
 func (r *Registry) RemoveJob(job *Job, time int64) {
@@ -160,7 +191,6 @@ func (r *Registry) AddTask(task *Task) {
 	if job != nil {
 		if t, ok := job.taskQueue[task.TaskIndex]; ok {
 			log.Debugf("Kill old task and submit new task for task(%v) of job(%v)", t.TaskIndex, t.JobID)
-
 		}
 		job.taskQueue[task.TaskIndex] = task
 		r.tasks[TaskID(task)] = task
@@ -252,8 +282,13 @@ func (r *Registry) RunOnMachine(task *Task) {
 	defer r.machineMutex.Unlock()
 
 	if m, ok := r.machines[task.MachineID]; ok {
-		m.UsedCpus += task.CpuRequest
-		m.UsedMem += task.MemoryRequest
+		if task.Oversubscribe {
+			m.UsedOversubscribedCpus += task.CpuRequest
+			m.UsedOversubscribedMem += task.MemoryRequest
+		} else {
+			m.UsedCpus += task.CpuRequest
+			m.UsedMem += task.MemoryRequest
+		}
 	}
 }
 
@@ -262,8 +297,13 @@ func (r *Registry) CompleteOnMachine(task *Task) {
 	defer r.machineMutex.Unlock()
 
 	if m, ok := r.machines[task.MachineID]; ok {
-		m.UsedCpus -= task.CpuRequest
-		m.UsedMem -= task.MemoryRequest
+		if task.Oversubscribe {
+			m.UsedOversubscribedCpus -= task.CpuRequest
+			m.UsedOversubscribedMem -= task.MemoryRequest
+		} else {
+			m.UsedCpus -= task.CpuRequest
+			m.UsedMem -= task.MemoryRequest
+		}
 	}
 }
 
@@ -308,6 +348,20 @@ func (r *Registry) ResourceOffers() ([]*Machine) {
 	return offers
 }
 
+func (r *Registry) OversubscribedResourceOffers(mResources map[int64][]float64) ([]*Machine) {
+	var offers []*Machine
+	for machineID, resources := range mResources {
+		if resources[0] > 0 && resources[1] > 0 {
+			if m, ok := r.machines[machineID]; ok {
+				m.OversubscribedCpus = resources[0]
+				m.OversubscribedMem = resources[1]
+				offers = append(offers, m)
+			}
+		}
+	}
+	return offers
+}
+
 func (r *Registry) LenEvent() int {
 	return len(*r.events)
 }
@@ -335,10 +389,44 @@ func (r *Registry) TopEvent() *Event {
 }
 
 func (r *Registry) AllDone() bool {
+	if len(r.tasks) == 0 {
+		return false
+	}
 	for _, task := range r.tasks {
-		if task.Status == TASK_STATUS_STAGING {
+		if task.Status != TASK_STATUS_FINISHED {
 			return false
 		}
 	}
 	return true
+}
+
+func (r *Registry) TimeCost(start time.Time) {
+	duration := time.Since(start)
+	r.totalTimeCost += duration.Seconds() * 1000000
+	r.countTimeCost += 1
+}
+
+func (r *Registry) AverageTimeCost() float64 {
+	return r.totalTimeCost / r.countTimeCost
+}
+
+func (r *Registry) UpdateMakespan(task *Task) {
+	r.totalMakespan += float64(task.StartTime - task.SubmitTime) / 1000.0 /1000.0
+	r.taskCount ++
+}
+
+func (r *Registry) GetMakespan() float64{
+	return float64(r.totalMakespan) / float64(r.taskCount)
+}
+
+func (r *Registry) ReportTask() {
+	var tasks []*Task
+	for _, task := range r.tasks {
+		tasks = append(tasks, task)
+	}
+	t := TaskSort(tasks)
+	sort.Sort(t)
+	for _, task := range t {
+		log.Infof("%v,%v,%v,%v,%v,%v", GetTaskID(task.JobID, task.TaskIndex), task.SubmitTime, task.StartTime, task.EndTime, (task.StartTime - task.SubmitTime)/1000/1000, task.Oversubscribe)
+	}
 }

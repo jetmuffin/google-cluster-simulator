@@ -10,6 +10,8 @@ type Config struct {
 
 	Scheduler int
 
+	Iteration int
+
 	Alpha  float64 // single exponential influence
 	Beta   float64 // double exponential influence
 	Theta  float64 // punish parameter
